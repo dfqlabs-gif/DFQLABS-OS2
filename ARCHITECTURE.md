@@ -23,34 +23,34 @@ This document serves as the master blueprint for OS 2.0, defining the complete d
 5. **Strict AI Evidence Grounding:** AI classification enforces three strict categories: `VERIFIED_FACT`, `REASONABLE_OBSERVATION`, and `UNKNOWN`. Unsupported claims are strictly prohibited.
 
 ### B. Database Schema Overview
-14 normalized PostgreSQL tables supporting strong typing, ACID transactions, foreign keys, unique constraints, and Row Level Security (RLS). (See Section 7).
+14 normalized PostgreSQL tables supporting strong typing, ACID transactions, foreign keys, unique constraints, CHECK constraints, ON DELETE CASCADE/RESTRICT behaviors, and Row Level Security (RLS). (See Section 7).
 
 ### C. API Map Overview
-RESTful TypeScript API with structured JSON payloads, standardized error envelopes, server-enforced role authorization, and event emitting hooks. (See Section 25 & 26).
+RESTful TypeScript API with structured Zod-validated JSON payloads, standardized error envelopes (RFC 7807), server-enforced role authorization, exact idempotency keys, and event-emitting hooks. (See Section 25 & 26).
 
 ### D. UI Map Overview
 Role-tailored interfaces utilizing the DFQLABS visual design tokens (Near-black background `#090A0F`, Pure white primary text `#FFFFFF`, Glacier Blue accent `#00D4FF`). (See Section 4 & 68).
 
 ### E. AI Architecture Overview
-Server-side Gemini interface wrapping structured context builders, schema validators, evidence grounding checkers, and learning feedback extractors. (See Section 17-21, 27, 28).
+Server-side Gemini interface wrapping structured context builders, schema validators (`response_schema`), evidence grounding checkers, and learning feedback extractors. (See Section 17-21, 27, 28).
 
 ### F. Security Model Overview
-Supabase JWT authentication, server-enforced RBAC (Founder vs Outreach Specialist), database Row Level Security, environment secret isolation, and sanitization pipelines. (See Section 8, 9, 36, 37).
+Supabase JWT authentication, server-enforced RBAC (Founder vs Outreach Specialist), database Row Level Security, environment secret isolation, rate limiting, and sanitization pipelines. (See Section 8, 9, 36, 37).
 
 ### G. Testing Strategy Overview
-Layered test architecture encompassing Unit Tests (normalizers, duplicate engines), Integration Tests (transactional DB handlers), AI Boundary Tests (grounding validators), and Playwright E2E end-to-end user workflows. (See Section 52).
+Layered test architecture encompassing Unit Tests (normalizers, duplicate engines), Integration Tests (transactional DB handlers), AI Boundary Tests (grounding validators), and Playwright E2E end-to-end user workflows. (See Section 30).
 
 ### H. Migration Strategy Overview
-Read-only extraction from production OS1 database, schema transformation and phone normalization, automated duplicate detection against OS2 baseline, and verified transactional import. (See Section 50, 51, 33).
+Read-only extraction from production OS1 database, schema transformation and phone normalization, automated duplicate detection against OS2 baseline, dry-run reconciliation, and verified transactional import. (See Section 33 & 50).
 
 ### I. Implementation Phases Overview
-13 structured implementation phases starting from repository foundation and ending at production hardening and migration execution. (See Section 59).
+13 structured implementation phases starting from repository foundation and ending at production hardening and migration execution. (See Section 36).
 
 ### J. Risk Matrix Overview
 Identification of primary architectural risks (e.g., stale state overwrite, WhatsApp popup blocking, AI hallucination) accompanied by concrete technical mitigations. (See Section 38).
 
 ### K. Acceptance Criteria Overview
-Strict definition of "Done" across all application layers requiring passing automated tests, verified persistence, server authorization, and audit trail generation. (See Section 53).
+Strict definition of "Done" across all application layers requiring passing automated tests, verified persistence, server authorization, and audit trail generation. (See Section 37).
 
 ---
 
@@ -164,7 +164,7 @@ Key Architectural Tenets:
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`) — *Authoritative*
   - `email` (VARCHAR(255), UNIQUE, NOT NULL) — *Authoritative*
   - `full_name` (VARCHAR(255), NOT NULL) — *Authoritative*
-  - `role` (VARCHAR(50), NOT NULL, Check: `FOUNDER` | `OUTREACH_SPECIALIST`) — *Authoritative*
+  - `role` (VARCHAR(50), NOT NULL, Check: `role IN ('FOUNDER', 'OUTREACH_SPECIALIST')`) — *Authoritative*
   - `is_active` (BOOLEAN, Default: `true`, NOT NULL) — *Authoritative*
   - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL) — *System*
   - `updated_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL) — *System*
@@ -175,12 +175,12 @@ Key Architectural Tenets:
 - **Purpose:** Represents operational capacity slots assigned to users.
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`) — *Authoritative*
-  - `seat_code` (VARCHAR(50), UNIQUE, NOT NULL) e.g., 'SEAT_ALPHA' — *Authoritative*
-  - `display_name` (VARCHAR(100), NOT NULL) e.g., 'Outreach Seat A' — *Authoritative*
-  - `current_user_id` (UUID, Foreign Key -> `users.id`, NULLABLE) — *Authoritative*
-  - `daily_outreach_target` (INTEGER, Default: 30, NOT NULL) — *Authoritative*
-  - `created_at` (TIMESTAMPTZ, Default: `now()`) — *System*
-  - `updated_at` (TIMESTAMPTZ, Default: `now()`) — *System*
+  - `seat_code` (VARCHAR(50), UNIQUE, NOT NULL) — *Authoritative*
+  - `display_name` (VARCHAR(100), NOT NULL) — *Authoritative*
+  - `current_user_id` (UUID, Foreign Key -> `users.id` ON DELETE SET NULL, NULLABLE) — *Authoritative*
+  - `daily_outreach_target` (INTEGER, Default: 30, NOT NULL, Check: `daily_outreach_target > 0`) — *Authoritative*
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL) — *System*
+  - `updated_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL) — *System*
 - **Indexes:** `idx_outreach_seats_user_id`.
 
 ### 7.3 Table: `leads`
@@ -190,13 +190,13 @@ Key Architectural Tenets:
   - `company_name` (VARCHAR(255), NOT NULL) — *User*
   - `contact_name` (VARCHAR(255), NULLABLE) — *User*
   - `title_role` (VARCHAR(150), NULLABLE) — *User*
-  - `business_type` (VARCHAR(100), NULLABLE) e.g., 'Residential Developer' — *User/AI*
-  - `location` (VARCHAR(150), NULLABLE) e.g., 'Abuja, Nigeria' — *User*
+  - `business_type` (VARCHAR(100), NULLABLE) — *User/AI*
+  - `location` (VARCHAR(150), NULLABLE) — *User*
   - `description` (TEXT, NULLABLE) — *User*
-  - `pipeline_stage` (VARCHAR(50), Default: 'UNCONTACTED', NOT NULL) — *Authoritative*
-  - `status` (VARCHAR(50), Default: 'ACTIVE', NOT NULL) — *Authoritative*
-  - `owner_user_id` (UUID, Foreign Key -> `users.id`, NOT NULL) — *Authoritative*
-  - `created_by_user_id` (UUID, Foreign Key -> `users.id`, NOT NULL) — *Authoritative*
+  - `pipeline_stage` (VARCHAR(50), Default: 'UNCONTACTED', NOT NULL, Check: `pipeline_stage IN ('UNCONTACTED', 'CONTACTED', 'REPLIED', 'QUALIFIED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'CLOSED_WON', 'CLOSED_LOST', 'NURTURE')`) — *Authoritative*
+  - `status` (VARCHAR(50), Default: 'ACTIVE', NOT NULL, Check: `status IN ('ACTIVE', 'INACTIVE', 'ARCHIVED')`) — *Authoritative*
+  - `owner_user_id` (UUID, Foreign Key -> `users.id` ON DELETE RESTRICT, NOT NULL) — *Authoritative*
+  - `created_by_user_id` (UUID, Foreign Key -> `users.id` ON DELETE RESTRICT, NOT NULL) — *Authoritative*
   - `last_contact_at` (TIMESTAMPTZ, NULLABLE) — *Derived/System*
   - `next_follow_up_at` (TIMESTAMPTZ, NULLABLE) — *Derived/AI*
   - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL) — *System*
@@ -208,11 +208,11 @@ Key Architectural Tenets:
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, NOT NULL)
-  - `contact_type` (VARCHAR(30), NOT NULL) — `PHONE` | `WHATSAPP` | `EMAIL`
+  - `contact_type` (VARCHAR(30), NOT NULL, Check: `contact_type IN ('PHONE', 'WHATSAPP', 'EMAIL')`)
   - `raw_value` (VARCHAR(255), NOT NULL) — *User*
   - `normalized_value` (VARCHAR(255), NOT NULL) — e.g. `+2348012345678` — *Derived/System*
   - `is_primary` (BOOLEAN, Default: `true`, NOT NULL)
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 - **Indexes:** `idx_contacts_normalized` (`contact_type`, `normalized_value`).
 - **Unique Constraint:** `(contact_type, normalized_value)`.
 
@@ -221,10 +221,10 @@ Key Architectural Tenets:
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, NOT NULL)
-  - `platform` (VARCHAR(30), NOT NULL) — `INSTAGRAM` | `FACEBOOK` | `LINKEDIN` | `WEBSITE`
+  - `platform` (VARCHAR(30), NOT NULL, Check: `platform IN ('INSTAGRAM', 'FACEBOOK', 'LINKEDIN', 'WEBSITE')`)
   - `handle_or_url` (TEXT, NOT NULL) — *User*
   - `normalized_identifier` (VARCHAR(255), NOT NULL) — e.g. `abcproperties_ng` or `abcproperties.com` — *System*
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 - **Indexes:** `idx_social_normalized` (`platform`, `normalized_identifier`).
 
 ### 7.6 Table: `lead_evidence`
@@ -232,11 +232,11 @@ Key Architectural Tenets:
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, NOT NULL)
-  - `source_type` (VARCHAR(50), NOT NULL) — `INSTAGRAM_BIO` | `WEBSITE_PAGE` | `POST_CAPTION` | `MANUAL_NOTE`
+  - `source_type` (VARCHAR(50), NOT NULL, Check: `source_type IN ('INSTAGRAM_BIO', 'WEBSITE_PAGE', 'POST_CAPTION', 'MANUAL_NOTE')`)
   - `evidence_text` (TEXT, NOT NULL) — *User/System*
   - `source_url` (TEXT, NULLABLE)
-  - `category` (VARCHAR(50), NOT NULL) — `VERIFIED_FACT` | `REASONABLE_OBSERVATION`
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `category` (VARCHAR(50), NOT NULL, Check: `category IN ('VERIFIED_FACT', 'REASONABLE_OBSERVATION')`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 - **Indexes:** `idx_evidence_lead` (`lead_id`).
 
 ### 7.7 Table: `conversations`
@@ -244,25 +244,25 @@ Key Architectural Tenets:
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, UNIQUE, NOT NULL)
-  - `channel` (VARCHAR(30), Default: 'WHATSAPP', NOT NULL)
+  - `channel` (VARCHAR(30), Default: 'WHATSAPP', NOT NULL, Check: `channel IN ('WHATSAPP', 'EMAIL', 'INSTAGRAM_DM')`)
   - `summary` (TEXT, NULLABLE) — *AI-Generated*
   - `last_message_at` (TIMESTAMPTZ, NULLABLE) — *System*
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
-  - `updated_at` (TIMESTAMPTZ, Default: `now()`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
+  - `updated_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 
 ### 7.8 Table: `messages`
 - **Purpose:** First-class entity for every message draft, edit, and sent communication.
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`) — *Authoritative*
   - `conversation_id` (UUID, Foreign Key -> `conversations.id` ON DELETE CASCADE, NOT NULL) — *Authoritative*
-  - `sender_user_id` (UUID, Foreign Key -> `users.id`, NULLABLE) — NULL if inbound — *Authoritative*
-  - `direction` (VARCHAR(10), NOT NULL) — `OUTBOUND` | `INBOUND` — *Authoritative*
-  - `type` (VARCHAR(50), NOT NULL) — `FIRST_TOUCH` | `FOLLOW_UP` | `RESPONSE` | `VALUE_MESSAGE` | `MANUAL` — *Authoritative*
+  - `sender_user_id` (UUID, Foreign Key -> `users.id` ON DELETE SET NULL, NULLABLE) — NULL if inbound — *Authoritative*
+  - `direction` (VARCHAR(10), NOT NULL, Check: `direction IN ('OUTBOUND', 'INBOUND')`) — *Authoritative*
+  - `type` (VARCHAR(50), NOT NULL, Check: `type IN ('FIRST_TOUCH', 'FOLLOW_UP', 'RESPONSE', 'VALUE_MESSAGE', 'MANUAL')`) — *Authoritative*
   - `ai_generated_content` (TEXT, NULLABLE) — *AI-Generated*
   - `human_edited_content` (TEXT, NULLABLE) — *User-Generated*
   - `final_sent_content` (TEXT, NULLABLE) — *Authoritative*
-  - `status` (VARCHAR(30), NOT NULL) — `GENERATED` | `EDITED` | `APPROVED` | `WHATSAPP_OPENED` | `SENT` | `FAILED` — *Authoritative*
-  - `evidence_used` (JSONB, Default: '[]'::jsonb) — *AI-Generated*
+  - `status` (VARCHAR(30), NOT NULL, Check: `status IN ('GENERATED', 'EDITED', 'APPROVED', 'WHATSAPP_OPENED', 'SENT', 'FAILED')`) — *Authoritative*
+  - `evidence_used` (JSONB, Default: '[]'::jsonb, NOT NULL) — *AI-Generated*
   - `whatsapp_url_generated` (TEXT, NULLABLE) — *System*
   - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
   - `sent_at` (TIMESTAMPTZ, NULLABLE)
@@ -273,19 +273,19 @@ Key Architectural Tenets:
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `message_id` (UUID, Foreign Key -> `messages.id` ON DELETE CASCADE, NOT NULL)
-  - `user_id` (UUID, Foreign Key -> `users.id`, NOT NULL)
+  - `user_id` (UUID, Foreign Key -> `users.id` ON DELETE RESTRICT, NOT NULL)
   - `original_ai_content` (TEXT, NOT NULL)
   - `edited_content` (TEXT, NOT NULL)
   - `edit_distance` (INTEGER, NOT NULL) — *System*
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 
 ### 7.10 Table: `activities_events`
 - **Purpose:** Immutable audit event stream.
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`) — *Authoritative*
-  - `event_type` (VARCHAR(100), NOT NULL) — e.g., `LEAD_CREATED`, `WHATSAPP_OPENED`, `MESSAGE_SENT`
+  - `event_type` (VARCHAR(100), NOT NULL, Check: `event_type IN ('LEAD_CREATED', 'LEAD_ASSIGNED', 'DUPLICATE_CHECKED', 'BRIEFING_GENERATED', 'MESSAGE_GENERATED', 'MESSAGE_EDITED', 'WHATSAPP_OPENED', 'MESSAGE_SENT', 'INBOUND_REPLY_RECORDED', 'FOLLOW_UP_SCHEDULED', 'OUTCOME_RECORDED', 'SEAT_REASSIGNED')`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, NULLABLE)
-  - `actor_user_id` (UUID, Foreign Key -> `users.id`, NOT NULL)
+  - `actor_user_id` (UUID, Foreign Key -> `users.id` ON DELETE RESTRICT, NOT NULL)
   - `payload` (JSONB, Default: '{}'::jsonb, NOT NULL)
   - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 - **Indexes:** `idx_events_lead` (`lead_id`), `idx_events_actor` (`actor_user_id`, `created_at`).
@@ -295,33 +295,33 @@ Key Architectural Tenets:
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, NOT NULL)
-  - `assigned_user_id` (UUID, Foreign Key -> `users.id`, NOT NULL)
+  - `assigned_user_id` (UUID, Foreign Key -> `users.id` ON DELETE RESTRICT, NOT NULL)
   - `due_at` (TIMESTAMPTZ, NOT NULL)
   - `reason` (TEXT, NOT NULL) — *AI/User*
-  - `status` (VARCHAR(30), Default: 'PENDING', NOT NULL) — `PENDING` | `COMPLETED` | `SKIPPED`
+  - `status` (VARCHAR(30), Default: 'PENDING', NOT NULL, Check: `status IN ('PENDING', 'COMPLETED', 'SKIPPED')`) — `PENDING` | `COMPLETED` | `SKIPPED`
   - `completed_at` (TIMESTAMPTZ, NULLABLE)
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 
 ### 7.12 Table: `outcomes`
 - **Purpose:** Recorded business results for sales intelligence.
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE CASCADE, NOT NULL)
-  - `recorded_by_user_id` (UUID, Foreign Key -> `users.id`, NOT NULL)
-  - `outcome_type` (VARCHAR(50), NOT NULL) — e.g. `NO_RESPONSE`, `REPLIED_POSITIVE`, `MEETING_SCHEDULED`, `CLOSED_WON`
+  - `recorded_by_user_id` (UUID, Foreign Key -> `users.id` ON DELETE RESTRICT, NOT NULL)
+  - `outcome_type` (VARCHAR(50), NOT NULL, Check: `outcome_type IN ('NO_RESPONSE', 'REPLIED_POSITIVE', 'REPLIED_NEGATIVE', 'AUDIT_REQUESTED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'CLOSED_WON', 'CLOSED_LOST', 'NURTURE')`)
   - `notes` (TEXT, NULLABLE)
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 
 ### 7.13 Table: `learning_signals`
 - **Purpose:** Raw learning data derived from outreach outcomes and edits.
 - **Columns:**
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
-  - `lead_id` (UUID, Foreign Key -> `leads.id`, NULLABLE)
-  - `message_id` (UUID, Foreign Key -> `messages.id`, NULLABLE)
-  - `signal_type` (VARCHAR(50), NOT NULL) — e.g. `HIGH_RESPONSE_HOOK`, `EDIT_PATTERN_REMOVE_FLUFF`
+  - `lead_id` (UUID, Foreign Key -> `leads.id` ON DELETE SET NULL, NULLABLE)
+  - `message_id` (UUID, Foreign Key -> `messages.id` ON DELETE SET NULL, NULLABLE)
+  - `signal_type` (VARCHAR(50), NOT NULL, Check: `signal_type IN ('HIGH_RESPONSE_HOOK', 'EDIT_PATTERN_REMOVE_FLUFF', 'OBJECTION_HANDLED', 'TIMING_OPTIMAL')`)
   - `feature_vector` (JSONB, NOT NULL)
-  - `score_impact` (NUMERIC(5,2), Default: 0.0)
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `score_impact` (NUMERIC(5,2), Default: 0.0, NOT NULL)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 
 ### 7.14 Table: `learning_insights`
 - **Purpose:** Synthesized institutional knowledge patterns for AI prompt context.
@@ -329,9 +329,9 @@ Key Architectural Tenets:
   - `id` (UUID, Primary Key, Default: `gen_random_uuid()`)
   - `category` (VARCHAR(100), NOT NULL) — e.g., 'ABUJA_RESIDENTIAL_HOOKS'
   - `insight_summary` (TEXT, NOT NULL)
-  - `confidence_score` (NUMERIC(3,2), Default: 0.80)
-  - `is_active` (BOOLEAN, Default: `true`)
-  - `created_at` (TIMESTAMPTZ, Default: `now()`)
+  - `confidence_score` (NUMERIC(3,2), Default: 0.80, NOT NULL, Check: `confidence_score BETWEEN 0.0 AND 1.0`)
+  - `is_active` (BOOLEAN, Default: `true`, NOT NULL)
+  - `created_at` (TIMESTAMPTZ, Default: `now()`, NOT NULL)
 
 ---
 
@@ -423,7 +423,7 @@ Status transitions are validated server-side based on event triggers:
   ```json
   {
     "matchType": "EXACT_MATCH",
-    "matchedLead": { "id": "...", "companyName": "ABC Homes", "ownerName": "Alex" },
+    "matchedLead": { "id": "123e4567-e89b-12d3-a456-426614174000", "companyName": "ABC Homes", "ownerName": "Alex" },
     "reason": "Normalized WhatsApp number +2348012345678 matches existing lead."
   }
   ```
@@ -457,11 +457,11 @@ Status transitions are validated server-side based on event triggers:
   Produces: `https://api.whatsapp.com/send?phone=+2348012345678&text=EncodedMessage`
 - **Execution Workflow:**
   1. Specialist clicks "Open WhatsApp".
-  2. UI triggers `POST /api/v1/messages/:id/whatsapp-opened`.
+  2. UI triggers `POST /api/v1/messages/:id/whatsapp-open`.
   3. Server sets status to `WHATSAPP_OPENED`, stores timestamp, and emits `WHATSAPP_OPENED` event.
   4. UI launches WhatsApp in a new tab via `window.open()`.
   5. Prompt appears: "Did your message send successfully?" [Confirm Sent] / [Issue Encountered].
-  6. Clicking [Confirm Sent] invokes `POST /api/v1/messages/:id/confirm-sent`, transitioning status to `SENT`.
+  6. Clicking [Confirm Sent] invokes `POST /api/v1/messages/:id/confirm-sent`, transitioning status to `SENT`. Message is NOT marked as `SENT` merely because WhatsApp was opened.
 
 ---
 
@@ -552,31 +552,32 @@ Status transitions are validated server-side based on event triggers:
   - `PROPOSAL_SENT`
   - `CLOSED_WON`
   - `CLOSED_LOST`
+  - `NURTURE`
 - Recording an outcome updates `leads.pipeline_stage` and schedules or clears pending follow-ups automatically.
 
 ---
 
 ## 25. API Endpoint Inventory
 
-| Method | Path | Purpose | Auth | Role | Input Payload | Output Payload | DB Effect | Events Created |
-|---|---|---|---|---|---|---|---|---|
-| POST | `/api/v1/auth/login` | User authentication | No | Any | `{email, password}` | `{token, user}` | None | None |
-| GET | `/api/v1/auth/me` | Fetch active session | Yes | Any | None | `{user, seat}` | None | None |
-| POST | `/api/v1/prospects/duplicate-check` | Check duplicate prospect | Yes | Any | `{phone, social, website, company}` | `{matchType, matchedLead, reason}` | None | `DUPLICATE_CHECKED` |
-| POST | `/api/v1/prospects` | Create lead | Yes | Any | Lead JSON | Created Lead Object | Inserts `leads`, `contacts`, etc. | `LEAD_CREATED` |
-| GET | `/api/v1/prospects` | List/search leads | Yes | Any | Query params (`page`, `search`, `stage`) | `{leads[], total}` | None | None |
-| GET | `/api/v1/prospects/:id` | Fetch prospect detail | Yes | Any | Lead ID | Full Lead Detail + Briefing | None | None |
-| POST | `/api/v1/prospects/:id/briefing` | Generate prospect briefing | Yes | Any | Lead ID | Briefing JSON | Inserts `lead_evidence` | `BRIEFING_GENERATED` |
-| POST | `/api/v1/messages/generate-first-touch` | Generate DM | Yes | Any | `{leadId}` | Message Draft JSON | Inserts `messages` | `MESSAGE_GENERATED` |
-| PUT | `/api/v1/messages/:id` | Save draft edits | Yes | Any | `{editedContent}` | Updated Message JSON | Updates `messages` | `MESSAGE_EDITED` |
-| POST | `/api/v1/messages/:id/whatsapp-open` | Log WA open | Yes | Any | None | `{whatsappUrl}` | Updates `messages.status` | `WHATSAPP_OPENED` |
-| POST | `/api/v1/messages/:id/confirm-sent` | Confirm message sent | Yes | Any | `{finalContent}` | Confirmed Message JSON | Updates `messages`, `leads` | `MESSAGE_SENT` |
-| POST | `/api/v1/conversations/:id/inbound` | Log prospect reply | Yes | Any | `{content, sentAt}` | Message JSON | Inserts `messages` | `INBOUND_REPLY_RECORDED` |
-| GET | `/api/v1/focus/today` | Fetch Today's Focus | Yes | Specialist | None | `{focusItems[]}` | None | None |
-| GET | `/api/v1/dashboard/mission-control` | Dashboard metrics | Yes | Any | None | Metric Breakdown JSON | None | None |
-| POST | `/api/v1/outcomes` | Record sales outcome | Yes | Any | `{leadId, outcomeType, notes}` | Outcome Object | Inserts `outcomes`, updates `leads` | `OUTCOME_RECORDED` |
-| GET | `/api/v1/admin/team` | Team & Seats | Yes | Founder | None | `{users[], seats[]}` | None | None |
-| POST | `/api/v1/admin/seats/reassign` | Reassign Seat | Yes | Founder | `{seatId, newUserId}` | Seat Object | Updates `outreach_seats` | `SEAT_REASSIGNED` |
+| Method | Path | Purpose | Auth | Role | Input Zod Payload Schema | Output JSON Schema | DB Effect | Events Created | Idempotency Key |
+|---|---|---|---|---|---|---|---|---|---|
+| POST | `/api/v1/auth/login` | User authentication | No | Any | `z.object({ email: z.string().email(), password: z.string().min(8) })` | `{ token: string, user: UserObject }` | None | None | No |
+| GET | `/api/v1/auth/me` | Fetch active session | Yes | Any | None | `{ user: UserObject, seat: SeatObject }` | None | None | No |
+| POST | `/api/v1/prospects/duplicate-check` | Check duplicate prospect | Yes | Any | `z.object({ phone: z.string().optional(), social: z.string().optional(), website: z.string().optional(), company: z.string().optional() })` | `{ matchType: 'EXACT_MATCH'\|'POTENTIAL_MATCH'\|'NO_MATCH', matchedLead?: LeadObject, reason?: string }` | None | `DUPLICATE_CHECKED` | No |
+| POST | `/api/v1/prospects` | Create lead | Yes | Any | `z.object({ companyName: z.string().min(1), contactName: z.string().optional(), phone: z.string().optional(), instagram: z.string().optional(), website: z.string().optional(), description: z.string().optional() })` | `{ lead: LeadObject }` | Inserts `leads`, `lead_contacts`, `lead_social_profiles`, `lead_evidence` | `LEAD_CREATED` | Yes (`Idempotency-Key` header) |
+| GET | `/api/v1/prospects` | List/search leads | Yes | Any | Query params (`page`, `limit`, `search`, `stage`) | `{ leads: LeadObject[], total: number, page: number, totalPages: number }` | None | None | No |
+| GET | `/api/v1/prospects/:id` | Fetch prospect detail | Yes | Any | Route Param: `id` (UUID) | `{ lead: LeadObject, contacts: ContactObject[], socialProfiles: SocialObject[], evidence: EvidenceObject[], briefing?: BriefingObject }` | None | None | No |
+| POST | `/api/v1/prospects/:id/briefing` | Generate prospect briefing | Yes | Any | Route Param: `id` (UUID) | `{ briefing: BriefingObject }` | Inserts `lead_evidence` | `BRIEFING_GENERATED` | Yes |
+| POST | `/api/v1/messages/generate-first-touch` | Generate DM | Yes | Any | `z.object({ leadId: z.string().uuid() })` | `{ message: MessageObject }` | Inserts `messages` | `MESSAGE_GENERATED` | Yes |
+| PUT | `/api/v1/messages/:id` | Save draft edits | Yes | Any | `z.object({ editedContent: z.string().min(1) })` | `{ message: MessageObject }` | Updates `messages.human_edited_content`, `messages.status` | `MESSAGE_EDITED` | No |
+| POST | `/api/v1/messages/:id/whatsapp-open` | Log WA open | Yes | Any | Route Param: `id` (UUID) | `{ whatsappUrl: string, status: 'WHATSAPP_OPENED' }` | Updates `messages.status` to `WHATSAPP_OPENED` | `WHATSAPP_OPENED` | No |
+| POST | `/api/v1/messages/:id/confirm-sent` | Confirm message sent | Yes | Any | `z.object({ finalContent: z.string().min(1) })` | `{ message: MessageObject, leadStatus: string }` | Updates `messages.status` to `SENT`, updates `leads.pipeline_stage` to `CONTACTED` | `MESSAGE_SENT` | Yes |
+| POST | `/api/v1/conversations/:id/inbound` | Log prospect reply | Yes | Any | `z.object({ content: z.string().min(1), sentAt: z.string().datetime().optional() })` | `{ message: MessageObject }` | Inserts `messages` (inbound), updates `leads.pipeline_stage` to `REPLIED` | `INBOUND_REPLY_RECORDED` | Yes |
+| GET | `/api/v1/focus/today` | Fetch Today's Focus | Yes | Specialist | Query params (`limit`) | `{ focusItems: FocusItemObject[] }` | None | None | No |
+| GET | `/api/v1/dashboard/mission-control` | Dashboard metrics | Yes | Any | Query params (`startDate`, `endDate`) | `{ metrics: MetricsObject }` | None | None | No |
+| POST | `/api/v1/outcomes` | Record sales outcome | Yes | Any | `z.object({ leadId: z.string().uuid(), outcomeType: z.enum(['NO_RESPONSE', 'REPLIED_POSITIVE', 'REPLIED_NEGATIVE', 'AUDIT_REQUESTED', 'MEETING_SCHEDULED', 'PROPOSAL_SENT', 'CLOSED_WON', 'CLOSED_LOST', 'NURTURE']), notes: z.string().optional() })` | `{ outcome: OutcomeObject }` | Inserts `outcomes`, updates `leads.pipeline_stage` | `OUTCOME_RECORDED` | Yes |
+| GET | `/api/v1/admin/team` | Team & Seats | Yes | Founder | None | `{ users: UserObject[], seats: SeatObject[] }` | None | None | No |
+| POST | `/api/v1/admin/seats/reassign` | Reassign Seat | Yes | Founder | `z.object({ seatId: z.string().uuid(), newUserId: z.string().uuid() })` | `{ seat: SeatObject }` | Updates `outreach_seats.current_user_id` | `SEAT_REASSIGNED` | Yes |
 
 ---
 
@@ -584,11 +585,11 @@ Status transitions are validated server-side based on event triggers:
 
 | Endpoint | Founder | Outreach Specialist |
 |---|---|---|
-| `POST /api/v1/prospects` | Allowed (Can assign to anyone) | Allowed (Auto-assigned to self) |
-| `GET /api/v1/prospects` | Access all leads across team | Access only owned leads |
-| `GET /api/v1/prospects/:id` | Access any lead | Access only if owner |
-| `POST /api/v1/messages/*` | Access any lead | Access only if owner |
-| `GET /api/v1/admin/*` | Full Access | **403 Forbidden** |
+| `POST /api/v1/prospects` | Allowed (Can assign to any team member) | Allowed (Auto-assigned to authenticated specialist) |
+| `GET /api/v1/prospects` | Access all leads across entire team | Access strictly restricted to owned leads (`owner_user_id == req.user.id`) |
+| `GET /api/v1/prospects/:id` | Access any lead | Access strictly restricted to owned lead |
+| `POST /api/v1/messages/*` | Access any lead | Access strictly restricted to owned lead |
+| `GET /api/v1/admin/*` | Full Access | **403 Forbidden (Server Enforced)** |
 
 ---
 
@@ -604,8 +605,16 @@ To maintain token efficiency and prevent hallucinations, AI prompts receive a ti
     "location": "Abuja, Nigeria"
   },
   "verifiedEvidence": [
-    "Instagram post on Oct 12 shows launch of Guzape luxury duplexes.",
-    "Website lists 4 completed residential projects in Maitama."
+    {
+      "source": "INSTAGRAM_POST",
+      "text": "Instagram post on Oct 12 shows launch of Guzape luxury duplexes.",
+      "category": "VERIFIED_FACT"
+    },
+    {
+      "source": "WEBSITE_PAGE",
+      "text": "Website lists 4 completed residential projects in Maitama.",
+      "category": "VERIFIED_FACT"
+    }
   ],
   "recentConversationHistory": [
     { "direction": "OUTBOUND", "text": "Hi Sarah, noticed your new Guzape project..." },
@@ -631,14 +640,18 @@ To maintain token efficiency and prevent hallucinations, AI prompts receive a ti
 
 ## 29. Error-Handling Strategy
 
-- Unified error response schema:
+- Unified error response schema (RFC 7807 problem details):
   ```json
   {
-    "error": {
-      "code": "DUPLICATE_PROSPECT_FOUND",
-      "message": "A prospect with normalized phone +2348012345678 already exists.",
-      "details": { "existingLeadId": "123e4567-e89b-12d3-a456-426614174000" }
-    }
+    "type": "https://dfqlabs.com/errors/duplicate-prospect",
+    "title": "Duplicate Prospect Detected",
+    "status": 409,
+    "code": "DUPLICATE_PROSPECT_FOUND",
+    "detail": "A prospect with normalized phone +2348012345678 already exists in the database.",
+    "instance": "/api/v1/prospects/duplicate-check",
+    "invalidParams": [
+      { "name": "phone", "reason": "Matches existing lead ID 123e4567-e89b-12d3-a456-426614174000" }
+    ]
   }
   ```
 - Unhandled client exceptions gracefully capture form state into local IndexedDB before rendering an error boundary with a "Restore Form" button.
@@ -675,12 +688,14 @@ To maintain token efficiency and prevent hallucinations, AI prompts receive a ti
 ## 33. Migration Strategy (from OS1 to OS2)
 
 1. OS1 production database remains 100% read-only and untouched.
-2. Migration Script (`scripts/migrate-os1-data.ts`) connects to OS1 DB in read-only mode.
-3. Maps JSONB fields from OS1 into OS2 normalized schema:
+2. OS2 is initialized in a completely distinct Supabase project/database (Project B).
+3. Migration Script (`scripts/migrate-os1-data.ts`) connects to OS1 DB in read-only mode.
+4. Maps JSONB fields from OS1 into OS2 normalized schema:
    - Extract raw phone/whatsapp -> run through Phone Normalizer -> insert into `lead_contacts`.
    - Map historical user names to newly generated OS2 User IDs.
-4. Duplicate check against existing OS2 database prior to insertion.
-5. Produces Migration Execution Audit Log (`migration_report.json`).
+5. Automated duplicate check against existing OS2 database prior to insertion.
+6. Execution includes dry-run validation, reconciliation reporting, rollback capabilities, and final cutover procedures.
+7. Produces Migration Execution Audit Log (`migration_report.json`).
 
 ---
 
@@ -803,6 +818,15 @@ dfqlabs-os2/
 - `vitest`: Fast unit testing framework.
 - `supertest`: HTTP assertion library for API testing.
 - `playwright`: End-to-end browser verification.
+
+---
+
+## 50. Complete Migration Procedures from OS1
+
+- **Read-Only Extraction:** Extraction connects directly to legacy OS1 database via read-only credentials.
+- **Transformation Pipeline:** Raw JSONB structures map into normalized OS2 entities.
+- **Data Validation & Reconciliation:** Script validates mandatory fields (`company_name`, normalized contacts). Unmapped or malformed records are logged to `migration_report.json`.
+- **Dry-Run & Rollback:** Migration is first executed against a staging OS2 database with transaction rollbacks enabled to verify foreign key integrity.
 
 ---
 
