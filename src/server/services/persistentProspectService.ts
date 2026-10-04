@@ -17,6 +17,10 @@ function mapLead(row: any, contacts: LeadContact[] = [], socialProfiles: LeadSoc
   };
 }
 
+function mapEvidence(row: any): LeadEvidence {
+  return { id: row.id, leadId: row.lead_id, sourceType: row.source_type, evidenceText: row.evidence_text, sourceUrl: row.source_url, category: row.category, createdAt: row.created_at };
+}
+
 function mapMessage(row: any): Message {
   return {
     id: row.id, conversationId: row.conversation_id, senderUserId: row.sender_user_id,
@@ -66,7 +70,7 @@ export class PersistentProspectService {
       leads: leads.map((r:any) => mapLead(r,
         (contacts||[]).filter((x:any)=>x.lead_id===r.id).map((x:any)=>({id:x.id,leadId:x.lead_id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:x.created_at})),
         (socials||[]).filter((x:any)=>x.lead_id===r.id).map((x:any)=>({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})),
-        (evidence||[]).filter((x:any)=>x.lead_id===r.id))),
+        (evidence||[]).filter((x:any)=>x.lead_id===r.id).map(mapEvidence))),
       total: count || 0, page, totalPages: Math.max(1, Math.ceil((count || 0) / limit))
     };
   }
