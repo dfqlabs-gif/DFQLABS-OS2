@@ -72,6 +72,11 @@ export class ApiClient {
     instagram?: string;
     website?: string;
     description?: string;
+    email?: string;
+    whatsapp?: string;
+    clientType?: string;
+    source?: string;
+    serviceTier?: string;
   }): Promise<{ lead: Lead }> {
     return this.request("/api/v1/prospects", {
       method: "POST",
