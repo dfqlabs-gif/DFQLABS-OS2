@@ -11,6 +11,7 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
   const [instagram, setInstagram] = useState("");
   const [website, setWebsite] = useState("");
   const [description, setDescription] = useState("");
+  const [email, setEmail] = useState("");
 
   const [dupResult, setDupResult] = useState<DuplicateCheckResult | null>(null);
   const [checking, setChecking] = useState(false);
@@ -128,6 +129,11 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
                 placeholder="e.g. @abcproperties_ng"
               />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input type="email" className="form-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. marketing@company.com" />
           </div>
 
           <div className="form-group">
