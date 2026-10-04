@@ -89,7 +89,7 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = (
                       <button
                         className="btn-secondary"
                         style={{ padding: "6px 12px", fontSize: "12px" }}
-                        onClick={() => onNavigate("/conversations")}
+                        onClick={() => onNavigate(`/prospects/${lead.id}`)}
                       >
                         Open Conversation
                       </button>
