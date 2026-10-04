@@ -123,8 +123,8 @@ export class PersistentProspectService {
     if(input.website)socials.push({lead_id:id,platform:"WEBSITE",handle_or_url:input.website,normalized_identifier:normalizeSocialIdentifier(input.website)});
     if(socials.length){const {error:e}=await db.from("lead_social_profiles").insert(socials);if(e)throw new Error(e.message);}
     if(input.description){const {error:e}=await db.from("lead_evidence").insert({lead_id:id,source_type:"MANUAL_NOTE",evidence_text:input.description,category:"REASONABLE_OBSERVATION"});if(e)throw new Error(e.message);}
-    const {error:ce}=const { error: conversationError } = await db.from("conversations").insert({lead_id:id,channel:"WHATSAPP",created_at:now,updated_at:now});
-    if (conversationError) { await db.from("leads").delete().eq("id", id); throw new Error(conversationError.message); }if(ce)throw new Error(ce.message);
+    const {error:ce}=await db.from("conversations").insert({lead_id:id,channel:"WHATSAPP",created_at:now,updated_at:now});
+    if(ce){await db.from("leads").delete().eq("id",id);throw new Error(ce.message);}
     EventService.logEvent({ eventType: "LEAD_CREATED", leadId: id, actorUserId: user.id, payload: { companyName: input.companyName } });
     return mapLead(row,contacts.map((x:any)=>({id:"",leadId:id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:now})),socials.map((x:any)=>({id:"",leadId:id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:now})),input.description?[{id:"",leadId:id,sourceType:"MANUAL_NOTE",evidenceText:input.description,category:"REASONABLE_OBSERVATION",createdAt:now}]:[]);
   }
