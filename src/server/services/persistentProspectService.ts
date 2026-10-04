@@ -1,4 +1,4 @@
-import { Lead, LeadContact, LeadSocialProfile, Message, User } from "../../shared/types/index.js";
+import { Lead, LeadContact, LeadSocialProfile, LeadEvidence, Message, User } from "../../shared/types/index.js";
 import { getSupabaseClient } from "../config/supabase.js";
 import { normalizePhone } from "../utils/phoneNormalizer.js";
 import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
@@ -15,6 +15,10 @@ function mapLead(row: any, contacts: LeadContact[] = [], socialProfiles: LeadSoc
     nextFollowUpAt: row.next_follow_up_at, createdAt: row.created_at, updatedAt: row.updated_at,
     contacts, socialProfiles, evidence
   };
+}
+
+function mapEvidence(row: any): LeadEvidence {
+  return { id: row.id, leadId: row.lead_id, sourceType: row.source_type, evidenceText: row.evidence_text, sourceUrl: row.source_url, category: row.category, createdAt: row.created_at };
 }
 
 function mapMessage(row: any): Message {
@@ -66,7 +70,7 @@ export class PersistentProspectService {
       leads: leads.map((r:any) => mapLead(r,
         (contacts||[]).filter((x:any)=>x.lead_id===r.id).map((x:any)=>({id:x.id,leadId:x.lead_id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:x.created_at})),
         (socials||[]).filter((x:any)=>x.lead_id===r.id).map((x:any)=>({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})),
-        (evidence||[]).filter((x:any)=>x.lead_id===r.id))),
+        (evidence||[]).filter((x:any)=>x.lead_id===r.id).map(mapEvidence))),
       total: count || 0, page, totalPages: Math.max(1, Math.ceil((count || 0) / limit))
     };
   }
@@ -90,7 +94,7 @@ export class PersistentProspectService {
     }
     return {
       lead: mapLead(row,(contacts||[]).map((x:any)=>({id:x.id,leadId:x.lead_id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:x.created_at})),
-        (socialProfiles||[]).map((x:any)=>({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})),evidence||[]),
+        (socialProfiles||[]).map((x:any)=>({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})),(evidence||[]).map(mapEvidence)),
       contacts:contacts||[],socialProfiles:socialProfiles||[],evidence:evidence||[],conversation,messages
     };
   }
@@ -123,7 +127,8 @@ export class PersistentProspectService {
     if(input.website)socials.push({lead_id:id,platform:"WEBSITE",handle_or_url:input.website,normalized_identifier:normalizeSocialIdentifier(input.website)});
     if(socials.length){const {error:e}=await db.from("lead_social_profiles").insert(socials);if(e)throw new Error(e.message);}
     if(input.description){const {error:e}=await db.from("lead_evidence").insert({lead_id:id,source_type:"MANUAL_NOTE",evidence_text:input.description,category:"REASONABLE_OBSERVATION"});if(e)throw new Error(e.message);}
-    const {error:ce}=await db.from("conversations").insert({lead_id:id,channel:"WHATSAPP",created_at:now,updated_at:now});if(ce)throw new Error(ce.message);
+    const {error:ce}=await db.from("conversations").insert({lead_id:id,channel:"WHATSAPP",created_at:now,updated_at:now});
+    if(ce){await db.from("leads").delete().eq("id",id);throw new Error(ce.message);}
     EventService.logEvent({ eventType: "LEAD_CREATED", leadId: id, actorUserId: user.id, payload: { companyName: input.companyName } });
     return mapLead(row,contacts.map((x:any)=>({id:"",leadId:id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:now})),socials.map((x:any)=>({id:"",leadId:id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:now})),input.description?[{id:"",leadId:id,sourceType:"MANUAL_NOTE",evidenceText:input.description,category:"REASONABLE_OBSERVATION",createdAt:now}]:[]);
   }

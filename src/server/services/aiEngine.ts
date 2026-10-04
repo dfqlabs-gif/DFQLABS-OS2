@@ -31,19 +31,10 @@ export class AIEngineService {
   }
 
   public static async generateFirstTouch(lead: Lead): Promise<FirstTouchDraftResult> {
-    const contactName = lead.contactName ?? "there";
-    const company = lead.companyName;
-    const location = lead.location ? ` in ${lead.location}` : "";
-
-    const verifiedFacts = lead.evidence
-      ?.filter((e) => e.category === "VERIFIED_FACT")
-      .map((e) => e.evidenceText) ?? [];
-
-    const draftText = `Hi ${contactName}, noticed ${company}'s developments${location}. Impressive work on your recent projects! At DFQLABS, we specialize in high-converting buyer acquisition engines for real estate firms. Would you be open to a quick 5-min chat on how we can drive qualified leads for your active inventory?`;
-
-    return {
-      draftText,
-      evidenceUsed: verifiedFacts.length > 0 ? verifiedFacts : ["VERIFIED_FACT: Company operating in real estate."]
-    };
+    const contactName = lead.contactName ? ` ${lead.contactName}` : "";
+    const verifiedFacts = lead.evidence?.filter((e) => e.category === "VERIFIED_FACT").map((e) => e.evidenceText) ?? [];
+    const context = verifiedFacts.length ? ` I noticed this from the information we have on your business: ${verifiedFacts[0]}` : "";
+    const draftText = `Hi${contactName}, I’m reaching out from DFQLABS. We help real estate companies improve how their positioning and content turn attention into serious buyer conversations.${context} I’d be happy to share one useful observation about your current content and positioning. Would you be open to that?`;
+    return { draftText, evidenceUsed: verifiedFacts };
   }
 }

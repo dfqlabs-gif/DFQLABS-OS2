@@ -13,6 +13,7 @@ import { FocusPage } from "./pages/FocusPage.js";
 import { PerformancePage } from "./pages/PerformancePage.js";
 import { ProspectsPage } from "./pages/ProspectsPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
+import { LeadDetailPage } from "./pages/LeadDetailPage.js";
 
 function AppContent() {
   const { activeRole } = useAuth();
@@ -46,6 +47,7 @@ function AppContent() {
       case "/admin/intelligence":
         return <AdminIntelligencePage />;
       default:
+        if (currentPath.startsWith("/prospects/")) return <LeadDetailPage leadId={currentPath.split("/")[2]} onNavigate={setCurrentPath} />;
         return <FocusPage onNavigate={setCurrentPath} />;
     }
   };
