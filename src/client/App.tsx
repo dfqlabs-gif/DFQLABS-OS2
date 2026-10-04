@@ -16,13 +16,16 @@ import { LoginPage } from "./pages/LoginPage.js";
 import { LeadDetailPage } from "./pages/LeadDetailPage.js";
 
 function AppContent() {
-  const { activeRole } = useAuth();
+  const { activeRole, user, loading } = useAuth();
   const [currentPath, setCurrentPath] = useState(activeRole === "FOUNDER" ? "/admin/dashboard" : "/focus");
   const [isCommandOpen, setIsCommandOpen] = useState(false);
 
   React.useEffect(() => {
     setCurrentPath(activeRole === "FOUNDER" ? "/admin/dashboard" : "/focus");
   }, [activeRole]);
+
+  if (loading) return <div className="app-container" style={{display:"grid",placeItems:"center",minHeight:"100vh"}}><div className="card">Loading DFQLABS OS…</div></div>;
+  if (!user) return <LoginPage />;
 
   const renderView = () => {
     const founderOnly = ["/admin/dashboard", "/admin/team", "/admin/intelligence"];
