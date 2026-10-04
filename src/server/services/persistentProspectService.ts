@@ -167,6 +167,7 @@ export class PersistentProspectService {
 
   static async confirmSent(id:string,finalContent:string,user:User){
     const db=getSupabaseClient()!,{data:msg,error}=await db.from("messages").select("*").eq("id",id).single();if(error||!msg)throw new Error("Message not found");
+    if(msg.status!=="WHATSAPP_OPENED") throw new Error("Open WhatsApp before confirming that this message was sent.");
     const {data:conversation}=await db.from("conversations").select("lead_id").eq("id",msg.conversation_id).single();if(!conversation)throw new Error("Conversation not found");
     const detail=await this.getById(conversation.lead_id,user);if(!detail)throw new Error("Lead not found");
     const sentAt=new Date().toISOString();
