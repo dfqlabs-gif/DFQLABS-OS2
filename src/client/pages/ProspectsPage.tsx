@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { Lead } from "../../shared/types/index.js";
+import { Skeleton } from "../components/Skeleton.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { useToast } from "../context/ToastContext.js";
 import { ApiClient } from "../services/api.js";
 
 export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = ({ onNavigate }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const { addToast } = useToast();
 
   const fetchLeads = (queryStr = "") => {
     setLoading(true);
     ApiClient.getProspects({ search: queryStr })
       .then((res) => setLeads(res.leads))
-      .catch(console.error)
+      .catch((err) => addToast(err.message, "error"))
       .finally(() => setLoading(false));
   };
 
@@ -32,10 +35,10 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = (
         <input
           type="text"
           className="form-input"
-          placeholder="Search by company name, contact, or location..."
+          placeholder="🔍 Search company name, contact, or location..."
           value={search}
           onChange={handleSearchChange}
-          style={{ width: "360px" }}
+          style={{ width: "380px" }}
         />
         <button className="btn-primary" onClick={() => onNavigate("/prospects/new")}>
           ➕ Add Prospect
@@ -57,14 +60,14 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = (
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", color: "var(--text-secondary)" }}>
-                  Loading prospects...
+                <td colSpan={6} style={{ padding: "20px" }}>
+                  <Skeleton height="30px" />
                 </td>
               </tr>
             ) : leads.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", color: "var(--text-secondary)" }}>
-                  No prospects found.
+                <td colSpan={6} style={{ textAlign: "center", color: "var(--text-secondary)", padding: "32px" }}>
+                  No prospects found matching your query.
                 </td>
               </tr>
             ) : (
@@ -73,17 +76,21 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = (
                 return (
                   <tr key={lead.id}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{lead.companyName}</div>
-                      <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{lead.businessType || "Real Estate"}</div>
+                      <div style={{ fontWeight: 700 }}>{lead.companyName}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{lead.businessType || "Real Estate"}</div>
                     </td>
                     <td>{lead.contactName || "—"}</td>
                     <td>{lead.location || "Nigeria"}</td>
                     <td>
                       <StatusBadge status={lead.pipelineStage} />
                     </td>
-                    <td>{phone}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{phone}</td>
                     <td>
-                      <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "12px" }} onClick={() => onNavigate("/conversations")}>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: "6px 12px", fontSize: "12px" }}
+                        onClick={() => onNavigate("/conversations")}
+                      >
                         Open Conversation
                       </button>
                     </td>

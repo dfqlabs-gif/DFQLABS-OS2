@@ -11,10 +11,10 @@ export const AdminIntelligencePage: React.FC = () => {
       />
 
       <div className="card">
-        <h3 style={{ marginTop: 0, fontSize: "16px" }}>Extracted Sales Insights</h3>
+        <h3 style={{ marginTop: 0, fontSize: "16px", fontWeight: 700 }}>Extracted Institutional Knowledge Insights</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
-          <div style={{ padding: "14px", border: "1px solid var(--border-color)", borderRadius: "8px", background: "var(--bg-primary)" }}>
-            <div style={{ fontWeight: 600, color: "var(--accent-glacier)", fontSize: "14px" }}>
+          <div style={{ padding: "16px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", background: "var(--bg-primary)" }}>
+            <div style={{ fontWeight: 700, color: "var(--accent-glacier)", fontSize: "14px" }}>
               ABUJA_RESIDENTIAL_HOOKS (Confidence: 92%)
             </div>
             <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--text-secondary)" }}>
@@ -22,8 +22,8 @@ export const AdminIntelligencePage: React.FC = () => {
             </p>
           </div>
 
-          <div style={{ padding: "14px", border: "1px solid var(--border-color)", borderRadius: "8px", background: "var(--bg-primary)" }}>
-            <div style={{ fontWeight: 600, color: "var(--accent-glacier)", fontSize: "14px" }}>
+          <div style={{ padding: "16px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", background: "var(--bg-primary)" }}>
+            <div style={{ fontWeight: 700, color: "var(--accent-glacier)", fontSize: "14px" }}>
               EDIT_PATTERN_FLUFF_REMOVAL (Confidence: 88%)
             </div>
             <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--text-secondary)" }}>

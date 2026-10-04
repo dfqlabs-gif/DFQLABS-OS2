@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { CommandPalette } from "./components/CommandPalette.js";
 import { Header } from "./components/Header.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { AuthProvider, useAuth } from "./context/AuthContext.js";
+import { ToastProvider } from "./context/ToastContext.js";
 import { AddProspectPage } from "./pages/AddProspectPage.js";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage.js";
 import { AdminIntelligencePage } from "./pages/AdminIntelligencePage.js";
@@ -14,6 +16,7 @@ import { ProspectsPage } from "./pages/ProspectsPage.js";
 function AppContent() {
   const { activeRole } = useAuth();
   const [currentPath, setCurrentPath] = useState(activeRole === "FOUNDER" ? "/admin/dashboard" : "/focus");
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
 
   React.useEffect(() => {
     setCurrentPath(activeRole === "FOUNDER" ? "/admin/dashboard" : "/focus");
@@ -49,7 +52,7 @@ function AppContent() {
       case "/prospects":
         return "My Prospects Directory";
       case "/prospects/new":
-        return "Capture New Prospect";
+        return "Capture New Prospect Dossier";
       case "/conversations":
         return "Conversations & DM Execution";
       case "/performance":
@@ -69,9 +72,15 @@ function AppContent() {
     <div className="app-container">
       <Sidebar currentPath={currentPath} onNavigate={setCurrentPath} />
       <div className="main-content">
-        <Header title={getPageTitle()} />
+        <Header title={getPageTitle()} onOpenCommand={() => setIsCommandOpen(true)} />
         <main className="page-body">{renderView()}</main>
       </div>
+
+      <CommandPalette
+        isOpen={isCommandOpen}
+        onClose={() => setIsCommandOpen(false)}
+        onNavigate={setCurrentPath}
+      />
     </div>
   );
 }
@@ -79,7 +88,9 @@ function AppContent() {
 export function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }

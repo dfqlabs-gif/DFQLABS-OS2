@@ -9,7 +9,13 @@ interface StatCardProps {
 
 export const StatCard: React.FC<StatCardProps> = ({ label, value, description, accentColor }) => {
   return (
-    <div className="card" style={{ borderColor: accentColor ? `${accentColor}40` : undefined }}>
+    <div
+      className="card"
+      style={{
+        borderColor: accentColor ? `${accentColor}40` : undefined,
+        borderLeft: accentColor ? `4px solid ${accentColor}` : undefined
+      }}
+    >
       <p className="stat-label">{label}</p>
       <p className="stat-value" style={{ color: accentColor ?? "var(--text-primary)" }}>
         {value}
