@@ -115,7 +115,7 @@ export class PersistentProspectService {
     const duplicate=await this.duplicateCheck({phone:input.phone,whatsapp:input.whatsapp,email:input.email,social:input.instagram,website:input.website,company:input.companyName},user);
     if(duplicate.matchType==="EXACT_MATCH")throw new Error("Duplicate lead: an existing prospect matches this contact or social identifier.");
     const id=crypto.randomUUID(),now=new Date().toISOString();
-    const {data:row,error}=await db.from("leads").insert({id,company_name:input.companyName,contact_name:input.contactName,title_role:input.titleRole,business_type:input.businessType,location:input.location,description:input.description,pipeline_stage:"UNCONTACTED",status:"ACTIVE",owner_user_id:user.id,created_by_user_id:user.id,created_at:now,updated_at:now}).select("*").single();
+    const {data:row,error}=await db.from("leads").insert({id,company_name:input.companyName,contact_name:input.contactName,title_role:input.titleRole,business_type:input.businessType,location:input.location,description:input.description,client_type:input.clientType,source:input.source,service_tier:input.serviceTier,pipeline_stage:"UNCONTACTED",status:"ACTIVE",owner_user_id:user.id,created_by_user_id:user.id,created_at:now,updated_at:now}).select("*").single();
     if(error||!row)throw new Error(error?.message||"Unable to create lead");
     const contacts:any[]=[];
     if(input.phone)contacts.push({lead_id:id,contact_type:"PHONE",raw_value:input.phone,normalized_value:normalizePhone(input.phone),is_primary:true});
