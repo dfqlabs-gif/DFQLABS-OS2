@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Lead, Message } from "../../shared/types/index.js";
+import { Skeleton } from "../components/Skeleton.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { UnderConstruction } from "../components/UnderConstruction.js";
+import { useToast } from "../context/ToastContext.js";
 import { ApiClient } from "../services/api.js";
 
 export const ConversationsPage: React.FC = () => {
@@ -12,6 +14,8 @@ export const ConversationsPage: React.FC = () => {
   const [draftContent, setDraftContent] = useState("");
   const [waOpened, setWaOpened] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const { addToast } = useToast();
 
   useEffect(() => {
     ApiClient.getProspects().then((res) => {
@@ -43,7 +47,7 @@ export const ConversationsPage: React.FC = () => {
         setDraftContent(latest.humanEditedContent || latest.aiGeneratedContent || latest.finalSentContent || "");
       }
     } catch (e) {
-      console.error(e);
+      addToast((e as Error).message, "error");
     } finally {
       setLoading(false);
     }
@@ -54,9 +58,9 @@ export const ConversationsPage: React.FC = () => {
     try {
       const updated = await ApiClient.updateMessageDraft(activeMessage.id, draftContent);
       setActiveMessage(updated.message);
-      alert("Draft saved!");
+      addToast("Draft edits saved!", "info");
     } catch (e) {
-      alert((e as Error).message);
+      addToast((e as Error).message, "error");
     }
   };
 
@@ -67,8 +71,9 @@ export const ConversationsPage: React.FC = () => {
       setActiveMessage(res.message);
       setWaOpened(true);
       window.open(res.whatsappUrl, "_blank");
+      addToast("WhatsApp window opened", "info");
     } catch (e) {
-      alert((e as Error).message);
+      addToast((e as Error).message, "error");
     }
   };
 
@@ -81,9 +86,9 @@ export const ConversationsPage: React.FC = () => {
       if (selectedLead) {
         setSelectedLead({ ...selectedLead, pipelineStage: "CONTACTED" });
       }
-      alert("Message confirmed as sent! Lead stage updated to CONTACTED.");
+      addToast("Message confirmed as SENT! Lead stage updated to CONTACTED", "success");
     } catch (e) {
-      alert((e as Error).message);
+      addToast((e as Error).message, "error");
     }
   };
 
@@ -98,7 +103,7 @@ export const ConversationsPage: React.FC = () => {
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "20px" }}>
         {/* Left: Lead Selector */}
         <div className="card" style={{ padding: "16px" }}>
-          <h3 style={{ fontSize: "14px", marginTop: 0, marginBottom: "12px", textTransform: "uppercase", color: "var(--text-secondary)" }}>
+          <h3 style={{ fontSize: "12px", marginTop: 0, marginBottom: "12px", textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.08em" }}>
             Prospects ({leads.length})
           </h3>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -108,15 +113,16 @@ export const ConversationsPage: React.FC = () => {
                 onClick={() => selectLead(l)}
                 style={{
                   padding: "12px",
-                  borderRadius: "8px",
+                  borderRadius: "var(--radius-md)",
                   background: selectedLead?.id === l.id ? "var(--bg-card-hover)" : "transparent",
                   border: `1px solid ${selectedLead?.id === l.id ? "var(--accent-glacier)" : "var(--border-color)"}`,
                   textAlign: "left",
                   cursor: "pointer",
-                  color: "var(--text-primary)"
+                  color: "var(--text-primary)",
+                  transition: "all var(--transition-fast)"
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: "14px" }}>{l.companyName}</div>
+                <div style={{ fontWeight: 700, fontSize: "14px" }}>{l.companyName}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
                   <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{l.contactName || "No Contact"}</span>
                   <StatusBadge status={l.pipelineStage} />
@@ -129,18 +135,21 @@ export const ConversationsPage: React.FC = () => {
         {/* Right: Message & WhatsApp Execution */}
         <div className="card">
           {loading || !selectedLead ? (
-            <p style={{ color: "var(--text-secondary)" }}>Loading conversation thread...</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <Skeleton height="30px" width="50%" />
+              <Skeleton height="100px" />
+            </div>
           ) : (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "16px" }}>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: "20px" }}>{selectedLead.companyName}</h2>
+                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 700 }}>{selectedLead.companyName}</h2>
                   <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--text-secondary)" }}>
                     Contact: {selectedLead.contactName ?? "Head of Marketing"} | Stage: <StatusBadge status={selectedLead.pipelineStage} />
                   </p>
                 </div>
                 {activeMessage && (
-                  <span style={{ fontSize: "12px", padding: "4px 8px", borderRadius: "6px", background: "var(--bg-primary)", border: "1px solid var(--border-color)" }}>
+                  <span style={{ fontSize: "12px", padding: "4px 10px", borderRadius: "var(--radius-sm)", background: "var(--bg-primary)", border: "1px solid var(--border-color)" }}>
                     Status: <strong style={{ color: "var(--accent-glacier)" }}>{activeMessage.status}</strong>
                   </span>
                 )}
@@ -149,22 +158,22 @@ export const ConversationsPage: React.FC = () => {
               {/* Thread History */}
               {messages.length > 0 && (
                 <div style={{ marginBottom: "20px" }}>
-                  <div style={{ fontSize: "12px", textTransform: "uppercase", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "8px" }}>
+                  <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px", letterSpacing: "0.08em" }}>
                     Conversation Timeline ({messages.length} messages)
                   </div>
                   {messages.map((m) => (
                     <div
                       key={m.id}
                       style={{
-                        padding: "10px 14px",
-                        borderRadius: "8px",
-                        background: m.direction === "OUTBOUND" ? "rgba(0, 212, 255, 0.08)" : "var(--bg-primary)",
+                        padding: "12px 16px",
+                        borderRadius: "var(--radius-md)",
+                        background: m.direction === "OUTBOUND" ? "var(--accent-glacier-glow)" : "var(--bg-primary)",
                         border: "1px solid var(--border-color)",
                         marginBottom: "8px",
                         fontSize: "13px"
                       }}
                     >
-                      <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginBottom: "4px" }}>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>
                         {m.direction} • {m.type} • Status: {m.status}
                       </div>
                       {m.finalSentContent || m.humanEditedContent || m.aiGeneratedContent}
@@ -174,7 +183,7 @@ export const ConversationsPage: React.FC = () => {
               )}
 
               {/* Verified Evidence Box */}
-              <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: "8px", padding: "12px 16px", marginBottom: "20px" }}>
+              <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "14px 18px", marginBottom: "20px" }}>
                 <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--accent-glacier)", fontWeight: 700, marginBottom: "4px" }}>
                   Verified Evidence Grounding
                 </div>
@@ -209,13 +218,13 @@ export const ConversationsPage: React.FC = () => {
                 )}
 
                 {(waOpened || activeMessage?.status === "WHATSAPP_OPENED") && activeMessage?.status !== "SENT" && (
-                  <button className="btn-primary" style={{ background: "var(--accent-emerald)" }} onClick={handleConfirmSent}>
+                  <button className="btn-primary" style={{ background: "linear-gradient(135deg, #10b981, #059669)" }} onClick={handleConfirmSent}>
                     ✅ Confirm Message Sent
                   </button>
                 )}
 
                 {activeMessage?.status === "SENT" && (
-                  <div style={{ color: "var(--accent-emerald)", fontWeight: 600, fontSize: "14px" }}>
+                  <div style={{ color: "var(--accent-emerald)", fontWeight: 700, fontSize: "14px" }}>
                     ✅ Message Sent & Confirmed on {new Date(activeMessage.sentAt || "").toLocaleDateString()}
                   </div>
                 )}
