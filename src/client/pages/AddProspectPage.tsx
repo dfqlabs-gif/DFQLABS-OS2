@@ -8,10 +8,14 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
   const [contactName, setContactName] = useState("");
   const [titleRole, setTitleRole] = useState("");
   const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [instagram, setInstagram] = useState("");
   const [website, setWebsite] = useState("");
   const [description, setDescription] = useState("");
   const [email, setEmail] = useState("");
+  const [clientType, setClientType] = useState("REAL_ESTATE_DEVELOPER");
+  const [source, setSource] = useState("MANUAL");
+  const [serviceTier, setServiceTier] = useState("STARTER");
 
   const [dupResult, setDupResult] = useState<DuplicateCheckResult | null>(null);
   const [checking, setChecking] = useState(false);
@@ -26,6 +30,8 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
       const result = await ApiClient.checkDuplicate({
         company: companyName,
         phone,
+        whatsapp,
+        email,
         social: instagram,
         website
       });
@@ -49,8 +55,13 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
         contactName,
         titleRole,
         phone,
+        whatsapp,
         instagram,
         website,
+        email,
+        clientType,
+        source,
+        serviceTier,
         description
       });
       addToast(`Prospect '${companyName}' captured successfully!`, "success");
@@ -134,6 +145,37 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
           <div className="form-group">
             <label className="form-label">Email</label>
             <input type="email" className="form-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. marketing@company.com" />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            <div className="form-group">
+              <label className="form-label">WhatsApp Number</label>
+              <input className="form-input" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} onBlur={handleDuplicateCheck} placeholder="Optional if different from phone" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Client Type</label>
+              <select className="form-input" value={clientType} onChange={(e) => setClientType(e.target.value)}>
+                <option value="REAL_ESTATE_DEVELOPER">Real Estate Developer</option>
+                <option value="LUXURY_REALTOR">Luxury Realtor</option>
+                <option value="ARCHITECTURE_FIRM">Architecture Firm</option>
+                <option value="CONSTRUCTION_FIRM">Construction Firm</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            <div className="form-group">
+              <label className="form-label">Source</label>
+              <select className="form-input" value={source} onChange={(e) => setSource(e.target.value)}>
+                <option value="MANUAL">Manual</option><option value="INSTAGRAM">Instagram</option><option value="WEBSITE">Website</option><option value="REFERRAL">Referral</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Service Tier</label>
+              <select className="form-input" value={serviceTier} onChange={(e) => setServiceTier(e.target.value)}>
+                <option value="STARTER">Starter — ₦200k/month</option><option value="GROWTH">Growth — ₦500k/month</option><option value="ADVANCED">Advanced — ₦1m/month</option><option value="TRAINING">Training — ₦500k/month</option><option value="CUSTOM">Custom</option>
+              </select>
+            </div>
           </div>
 
           <div className="form-group">
