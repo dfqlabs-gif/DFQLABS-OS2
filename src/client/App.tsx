@@ -12,6 +12,7 @@ import { ConversationsPage } from "./pages/ConversationsPage.js";
 import { FocusPage } from "./pages/FocusPage.js";
 import { PerformancePage } from "./pages/PerformancePage.js";
 import { ProspectsPage } from "./pages/ProspectsPage.js";
+import { LoginPage } from "./pages/LoginPage.js";
 
 function AppContent() {
   const { activeRole } = useAuth();
