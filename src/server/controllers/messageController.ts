@@ -22,7 +22,7 @@ export class MessageController {
     }
   }
 
-  public static updateDraft(req: Request, res: Response): void {
+  public static async updateDraft(req: Request, res: Response): Promise<void> {
     if (!req.user) {
       res.status(401).json({ title: "Unauthorized", status: 401 });
       return;
@@ -36,7 +36,7 @@ export class MessageController {
     }
   }
 
-  public static whatsappOpen(req: Request, res: Response): void {
+  public static async whatsappOpen(req: Request, res: Response): Promise<void> {
     if (!req.user) {
       res.status(401).json({ title: "Unauthorized", status: 401 });
       return;
@@ -50,7 +50,7 @@ export class MessageController {
     }
   }
 
-  public static confirmSent(req: Request, res: Response): void {
+  public static async confirmSent(req: Request, res: Response): Promise<void> {
     if (!req.user) {
       res.status(401).json({ title: "Unauthorized", status: 401 });
       return;
