@@ -3,9 +3,10 @@ import { AIEngineService } from "../services/aiEngine.js";
 import { DuplicateEngine } from "../services/duplicateEngine.js";
 import { EventService } from "../services/eventService.js";
 import { LeadService } from "../services/leadService.js";
+import { PersistentProspectService } from "../services/persistentProspectService.js";
 
 export class ProspectController {
-  public static duplicateCheck(req: Request, res: Response): void {
+  public static async duplicateCheck(req: Request, res: Response): Promise<void> {
     const existingLeads = LeadService.getAllLeads(req.user);
     const result = DuplicateEngine.checkForDuplicate(req.body, existingLeads);
 
@@ -26,7 +27,7 @@ export class ProspectController {
       return;
     }
 
-    const lead = await LeadService.createLead(req.body, req.user);
+    const lead = PersistentProspectService.available()\n      ? await PersistentProspectService.create(req.body, req.user)\n      : await LeadService.createLead(req.body, req.user);
     res.status(201).json({ lead });
   }
 
