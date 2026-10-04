@@ -8,7 +8,7 @@ import { PersistentProspectService } from "../services/persistentProspectService
 export class ProspectController {
   public static async duplicateCheck(req: Request, res: Response): Promise<void> {
     const existingLeads = LeadService.getAllLeads(req.user);
-    const result = DuplicateEngine.checkForDuplicate(req.body, existingLeads);
+    const result = PersistentProspectService.available() ? await PersistentProspectService.duplicateCheck(req.body, req.user!) : DuplicateEngine.checkForDuplicate(req.body, existingLeads);
 
     if (req.user) {
       EventService.logEvent({
@@ -27,11 +27,19 @@ export class ProspectController {
       return;
     }
 
-    const lead = PersistentProspectService.available()\n      ? await PersistentProspectService.create(req.body, req.user)\n      : await LeadService.createLead(req.body, req.user);
+    const lead = PersistentProspectService.available()
+      ? await PersistentProspectService.create(req.body, req.user)
+      : await LeadService.createLead(req.body, req.user);
     res.status(201).json({ lead });
   }
 
-  public static list(req: Request, res: Response): void {
+  public static async list(req: Request, res: Response): Promise<void> {
+    if (PersistentProspectService.available() && req.user) {
+      const result = await PersistentProspectService.list(req.user, { search: req.query.search as string, stage: req.query.stage as string, page: Number(req.query.page || 1), limit: Number(req.query.limit || 25) });
+      res.status(200).json(result);
+      return;
+    }
+
     const leads = LeadService.getAllLeads(req.user);
     const page = parseInt((req.query.page as string) || "1", 10);
     const limit = parseInt((req.query.limit as string) || "25", 10);
@@ -64,7 +72,14 @@ export class ProspectController {
     });
   }
 
-  public static getById(req: Request, res: Response): void {
+  public static async getById(req: Request, res: Response): Promise<void> {
+    if (PersistentProspectService.available() && req.user) {
+      const result = await PersistentProspectService.getById(req.params.id, req.user);
+      if (!result) { res.status(404).json({ title: "Lead Not Found", status: 404, detail: `No lead found with ID ${req.params.id}` }); return; }
+      res.status(200).json(result);
+      return;
+    }
+
     const lead = LeadService.getLeadById(req.params.id, req.user);
     if (!lead) {
       res.status(404).json({
