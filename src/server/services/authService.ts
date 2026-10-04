@@ -16,7 +16,10 @@ function encode(payload: SessionPayload): string {
 
 function decode(token: string): SessionPayload | null {
   const [body, signature] = token.split(".");
-  if (!body || !signature) return null;\n  const expected = Buffer.from(sign(body));\n  const actual = Buffer.from(signature);\n  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
+  if (!body || !signature) return null;
+  const expected = Buffer.from(sign(body));
+  const actual = Buffer.from(signature);
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionPayload;
     if (!payload.sub || payload.exp < Date.now()) return null;
