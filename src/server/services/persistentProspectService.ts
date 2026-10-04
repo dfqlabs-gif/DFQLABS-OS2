@@ -1,4 +1,4 @@
-import { Lead, LeadContact, LeadSocialProfile, Message, User } from "../../shared/types/index.js";
+import { Lead, LeadContact, LeadSocialProfile, LeadEvidence, Message, User } from "../../shared/types/index.js";
 import { getSupabaseClient } from "../config/supabase.js";
 import { normalizePhone } from "../utils/phoneNormalizer.js";
 import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
@@ -94,7 +94,7 @@ export class PersistentProspectService {
     }
     return {
       lead: mapLead(row,(contacts||[]).map((x:any)=>({id:x.id,leadId:x.lead_id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:x.created_at})),
-        (socialProfiles||[]).map((x:any)=>({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})),evidence||[]),
+        (socialProfiles||[]).map((x:any)=>({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})),(evidence||[]).map(mapEvidence)),
       contacts:contacts||[],socialProfiles:socialProfiles||[],evidence:evidence||[],conversation,messages
     };
   }
