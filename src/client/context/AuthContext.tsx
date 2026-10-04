@@ -7,28 +7,22 @@ interface AuthContextType {
   seat: OutreachSeat | null;
   loading: boolean;
   activeRole: "FOUNDER" | "OUTREACH_SPECIALIST";
-  switchRole: (role: "FOUNDER" | "OUTREACH_SPECIALIST") => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   seat: null,
   loading: true,
-  activeRole: "OUTREACH_SPECIALIST",
-  switchRole: () => {}
+  activeRole: "OUTREACH_SPECIALIST"
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [seat, setSeat] = useState<OutreachSeat | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeRole, setActiveRole] = useState<"FOUNDER" | "OUTREACH_SPECIALIST">("OUTREACH_SPECIALIST");
 
-  const loadSession = (role: "FOUNDER" | "OUTREACH_SPECIALIST") => {
+  useEffect(() => {
     setLoading(true);
-    const token = role === "FOUNDER" ? "founder-token" : "specialist-token";
-    ApiClient.setAuthToken(token);
-
     ApiClient.getMe()
       .then((res) => {
         setUser(res.user);
@@ -40,18 +34,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .finally(() => {
         setLoading(false);
       });
-  };
+  }, []);
 
-  useEffect(() => {
-    loadSession(activeRole);
-  }, [activeRole]);
-
-  const switchRole = (role: "FOUNDER" | "OUTREACH_SPECIALIST") => {
-    setActiveRole(role);
-  };
+  const activeRole = user?.role ?? "OUTREACH_SPECIALIST";
 
   return (
-    <AuthContext.Provider value={{ user, seat, loading, activeRole, switchRole }}>
+    <AuthContext.Provider value={{ user, seat, loading, activeRole }}>
       {children}
     </AuthContext.Provider>
   );

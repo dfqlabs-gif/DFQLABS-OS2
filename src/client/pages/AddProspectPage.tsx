@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { DuplicateCheckResult } from "../../shared/types/index.js";
-import { useToast } from "../context/ToastContext.js";
 import { ApiClient } from "../services/api.js";
 
 export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> = ({ onNavigate }) => {
@@ -16,8 +15,6 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const { addToast } = useToast();
-
   const handleDuplicateCheck = async () => {
     if (!companyName && !phone && !instagram && !website) return;
     setChecking(true);
@@ -29,9 +26,6 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
         website
       });
       setDupResult(result);
-      if (result.matchType === "EXACT_MATCH") {
-        addToast("Exact duplicate prospect found in registry", "warning");
-      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -52,21 +46,18 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
         website,
         description
       });
-      addToast(`Prospect '${companyName}' captured successfully!`, "success");
       onNavigate("/prospects");
     } catch (err) {
-      addToast((err as Error).message, "error");
+      alert((err as Error).message);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: "680px", margin: "0 auto" }}>
+    <div style={{ maxWidth: "680px" }}>
       <div className="card">
-        <h2 style={{ marginTop: 0, marginBottom: "20px", fontSize: "18px", fontWeight: 700 }}>
-          Capture New Prospect Dossier
-        </h2>
+        <h2 style={{ marginTop: 0, marginBottom: "20px", fontSize: "18px" }}>Capture New Prospect</h2>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -78,7 +69,7 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               onBlur={handleDuplicateCheck}
-              placeholder="e.g. ABC Properties Nigeria"
+              placeholder="e.g. ABC Properties"
             />
           </div>
 
@@ -143,13 +134,13 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
           </div>
 
           <div className="form-group">
-            <label className="form-label">Evidence / Notes (Grounding Context)</label>
+            <label className="form-label">Evidence / Notes</label>
             <textarea
               className="form-textarea"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Verified facts from instagram bio or website to ground AI DM generation"
+              placeholder="Key facts from social profile or website to ground AI outreach"
             />
           </div>
 
@@ -159,9 +150,9 @@ export const AddProspectPage: React.FC<{ onNavigate: (path: string) => void }> =
             <div
               style={{
                 padding: "14px",
-                borderRadius: "var(--radius-md)",
+                borderRadius: "8px",
                 marginBottom: "20px",
-                backgroundColor: dupResult.matchType === "EXACT_MATCH" ? "var(--accent-rose-glow)" : "var(--accent-amber-glow)",
+                backgroundColor: dupResult.matchType === "EXACT_MATCH" ? "rgba(244, 63, 94, 0.15)" : "rgba(245, 158, 11, 0.15)",
                 border: `1px solid ${dupResult.matchType === "EXACT_MATCH" ? "var(--accent-rose)" : "var(--accent-amber)"}`
               }}
             >

@@ -38,12 +38,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
       style={{
         display: "inline-block",
         padding: "4px 8px",
-        borderRadius: "var(--radius-sm)",
+        borderRadius: "6px",
         fontSize: "11px",
-        fontWeight: 700,
+        fontWeight: 600,
         color,
         backgroundColor: bg,
-        letterSpacing: "0.04em"
+        letterSpacing: "0.03em"
       }}
     >
       {status}

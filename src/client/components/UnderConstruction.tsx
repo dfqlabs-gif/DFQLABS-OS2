@@ -15,7 +15,7 @@ export const UnderConstruction: React.FC<UnderConstructionProps> = ({ moduleName
         <p className="construction-text">
           {description}
           {targetPhase && (
-            <span style={{ display: "block", marginTop: "6px", color: "var(--accent-glacier)", fontWeight: 600 }}>
+            <span style={{ display: "block", marginTop: "6px", color: "var(--accent-glacier)", fontWeight: 500 }}>
               Implementation scheduled for {targetPhase} per ARCHITECTURE.md execution roadmap.
             </span>
           )}

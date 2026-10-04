@@ -18,10 +18,6 @@ export class ApiClient {
     this.token = token;
   }
 
-  public static getAuthToken(): string {
-    return this.token;
-  }
-
   private static async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -42,7 +38,7 @@ export class ApiClient {
     return res.json();
   }
 
-  public static getHealth(): Promise<{ ok: boolean; service: string; timestamp: string; dbConnected: boolean }> {
+  public static getHealth(): Promise<{ ok: boolean; service: string; timestamp: string }> {
     return this.request("/health");
   }
 
