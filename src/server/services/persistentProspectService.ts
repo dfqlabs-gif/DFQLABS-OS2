@@ -124,7 +124,8 @@ export class PersistentProspectService {
     if(socials.length){const {error:e}=await db.from("lead_social_profiles").insert(socials);if(e)throw new Error(e.message);}
     if(input.description){const {error:e}=await db.from("lead_evidence").insert({lead_id:id,source_type:"MANUAL_NOTE",evidence_text:input.description,category:"REASONABLE_OBSERVATION"});if(e)throw new Error(e.message);}
     const {error:ce}=await db.from("conversations").insert({lead_id:id,channel:"WHATSAPP",created_at:now,updated_at:now});if(ce)throw new Error(ce.message);
-    EventService.logEvent({ eventType: "LEAD_CREATED", leadId: id, actorUserId: user.id, payload: { companyName: input.companyName } });\n    return mapLead(row,contacts.map((x:any)=>({id:"",leadId:id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:now})),socials.map((x:any)=>({id:"",leadId:id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:now})),input.description?[{id:"",leadId:id,sourceType:"MANUAL_NOTE",evidenceText:input.description,category:"REASONABLE_OBSERVATION",createdAt:now}]:[]);
+    EventService.logEvent({ eventType: "LEAD_CREATED", leadId: id, actorUserId: user.id, payload: { companyName: input.companyName } });
+    return mapLead(row,contacts.map((x:any)=>({id:"",leadId:id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:now})),socials.map((x:any)=>({id:"",leadId:id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:now})),input.description?[{id:"",leadId:id,sourceType:"MANUAL_NOTE",evidenceText:input.description,category:"REASONABLE_OBSERVATION",createdAt:now}]:[]);
   }
 
   static async generateFirstTouch(leadId:string,user:User):Promise<Message>{
@@ -134,6 +135,7 @@ export class PersistentProspectService {
     if(!conversation)throw new Error("Conversation unavailable");
     const {data,error}=await getSupabaseClient()!.from("messages").insert({conversation_id:conversation.id,sender_user_id:user.id,direction:"OUTBOUND",type:"FIRST_TOUCH",ai_generated_content:draftText,human_edited_content:draftText,status:"GENERATED",evidence_used:evidenceUsed}).select("*").single();
     if(error||!data)throw new Error(error?.message||"Unable to generate message");
+    EventService.logEvent({ eventType: "MESSAGE_GENERATED", leadId, actorUserId: user.id, payload: { messageId: data.id } });
     return mapMessage(data);
   }
 
@@ -141,7 +143,8 @@ export class PersistentProspectService {
     const db=getSupabaseClient()!,{data:msg,error}=await db.from("messages").select("*").eq("id",id).single();if(error||!msg)throw new Error("Message not found");
     const {error:e}=await db.from("messages").update({human_edited_content:editedContent,status:"EDITED"}).eq("id",id);if(e)throw new Error(e.message);
     await db.from("message_edits").insert({message_id:id,user_id:user.id,original_ai_content:msg.ai_generated_content||"",edited_content:editedContent,edit_distance:Math.abs((msg.ai_generated_content||"").length-editedContent.length)});
-    EventService.logEvent({ eventType: "MESSAGE_EDITED", actorUserId: user.id, payload: { messageId: id } });\n    const {data:updated}=await db.from("messages").select("*").eq("id",id).single();return mapMessage(updated);
+    EventService.logEvent({ eventType: "MESSAGE_EDITED", actorUserId: user.id, payload: { messageId: id } });
+    const {data:updated}=await db.from("messages").select("*").eq("id",id).single();return mapMessage(updated);
   }
 
   static async openWhatsApp(id:string,user:User){
@@ -153,7 +156,8 @@ export class PersistentProspectService {
     const content=msg.human_edited_content||msg.ai_generated_content||"";
     const url=WhatsAppService.buildTargetUrl(phone,content);
     const {error:e}=await db.from("messages").update({status:"WHATSAPP_OPENED",whatsapp_url_generated:url}).eq("id",id);if(e)throw new Error(e.message);
-    EventService.logEvent({ eventType: "WHATSAPP_OPENED", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: id } });\n    return {message:mapMessage({...msg,status:"WHATSAPP_OPENED",whatsapp_url_generated:url}),whatsappUrl:url};
+    EventService.logEvent({ eventType: "WHATSAPP_OPENED", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: id } });
+    return {message:mapMessage({...msg,status:"WHATSAPP_OPENED",whatsapp_url_generated:url}),whatsappUrl:url};
   }
 
   static async confirmSent(id:string,finalContent:string,user:User){
@@ -163,6 +167,7 @@ export class PersistentProspectService {
     const sentAt=new Date().toISOString();
     const {data:updated,error:e}=await db.from("messages").update({final_sent_content:finalContent,human_edited_content:finalContent,status:"SENT",sent_at:sentAt}).eq("id",id).select("*").single();if(e||!updated)throw new Error(e?.message||"Unable to confirm sent");
     await db.from("leads").update({pipeline_stage:"CONTACTED",last_contact_at:sentAt,updated_at:sentAt}).eq("id",conversation.lead_id);
-    EventService.logEvent({ eventType: "MESSAGE_SENT", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: id, finalContent } });\n    return {message:mapMessage(updated),leadStage:"CONTACTED"};
+    EventService.logEvent({ eventType: "MESSAGE_SENT", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: id, finalContent } });
+    return {message:mapMessage(updated),leadStage:"CONTACTED"};
   }
 }
