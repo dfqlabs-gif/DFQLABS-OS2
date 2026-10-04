@@ -24,6 +24,10 @@ function AppContent() {
   }, [activeRole]);
 
   const renderView = () => {
+    const founderOnly = ["/admin/dashboard", "/admin/team", "/admin/intelligence"];
+    if (activeRole !== "FOUNDER" && founderOnly.includes(currentPath)) {
+      return <FocusPage onNavigate={setCurrentPath} />;
+    }
     switch (currentPath) {
       case "/focus":
         return <FocusPage onNavigate={setCurrentPath} />;
