@@ -7,21 +7,28 @@ export const LoginSchema = z.object({
 
 export const DuplicateCheckSchema = z.object({
   phone: z.string().optional(),
+  whatsapp: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
   social: z.string().optional(),
   website: z.string().optional(),
   company: z.string().optional()
 });
 
 export const CreateProspectSchema = z.object({
-  companyName: z.string().min(1, "Company name is required"),
+  companyName: z.string().min(1),
   contactName: z.string().optional(),
   titleRole: z.string().optional(),
   businessType: z.string().optional(),
   location: z.string().optional(),
   phone: z.string().optional(),
+  whatsapp: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
   instagram: z.string().optional(),
   website: z.string().optional(),
-  description: z.string().optional()
+  description: z.string().optional(),
+  clientType: z.string().optional(),
+  source: z.string().optional(),
+  serviceTier: z.string().optional()
 });
 
 export const GenerateFirstTouchSchema = z.object({
