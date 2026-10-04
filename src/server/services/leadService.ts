@@ -79,7 +79,7 @@ const seedEvidence: LeadEvidence = {
   leadId: seedLeadId,
   sourceType: "INSTAGRAM_BIO",
   evidenceText: "Luxury residential developer in Guzape, Abuja.",
-  category: "VERIFIED_FACT",
+  category: "REASONABLE_OBSERVATION",
   createdAt: new Date().toISOString()
 };
 
