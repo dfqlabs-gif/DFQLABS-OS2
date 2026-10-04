@@ -7,7 +7,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
-  const { user, seat, activeRole, switchRole } = useAuth();
+  const { user, seat, activeRole } = useAuth();
 
   return (
     <header className="header">
@@ -20,14 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
       </div>
 
       <div className="user-profile">
-        <button
-          className="role-toggle-btn"
-          onClick={() => switchRole(activeRole === "FOUNDER" ? "OUTREACH_SPECIALIST" : "FOUNDER")}
-          title="Switch active role workspace session"
-        >
-          View as: <strong style={{ color: "var(--accent-glacier)" }}>{activeRole === "FOUNDER" ? "Founder" : "Specialist"}</strong> 🔄
-        </button>
-        {seat && (
+{seat && (
           <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
             Seat: <strong style={{ color: "var(--text-primary)" }}>{seat.displayName}</strong>
           </span>
