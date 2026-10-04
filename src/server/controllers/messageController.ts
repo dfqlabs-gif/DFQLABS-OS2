@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { LeadService } from "../services/leadService.js";
+import { PersistentProspectService } from "../services/persistentProspectService.js";
 
 export class MessageController {
   public static async generateFirstTouch(req: Request, res: Response): Promise<void> {
@@ -9,7 +10,7 @@ export class MessageController {
     }
 
     try {
-      const message = await LeadService.generateFirstTouch(req.body.leadId, req.user);
+      const message = PersistentProspectService.available() ? await PersistentProspectService.generateFirstTouch(req.body.leadId, req.user) : await LeadService.generateFirstTouch(req.body.leadId, req.user);
       res.status(200).json({ message });
     } catch (error) {
       res.status(404).json({
@@ -28,7 +29,7 @@ export class MessageController {
     }
 
     try {
-      const message = LeadService.updateMessageDraft(req.params.id, req.body.editedContent, req.user);
+      const message = PersistentProspectService.available() ? await PersistentProspectService.updateMessageDraft(req.params.id, req.body.editedContent, req.user) : LeadService.updateMessageDraft(req.params.id, req.body.editedContent, req.user);
       res.status(200).json({ message });
     } catch (error) {
       res.status(404).json({ title: "Message Not Found", status: 404, detail: (error as Error).message });
@@ -42,7 +43,7 @@ export class MessageController {
     }
 
     try {
-      const result = LeadService.logWhatsAppOpen(req.params.id, req.user);
+      const result = PersistentProspectService.available() ? await PersistentProspectService.openWhatsApp(req.params.id, req.user) : LeadService.logWhatsAppOpen(req.params.id, req.user);
       res.status(200).json(result);
     } catch (error) {
       res.status(404).json({ title: "Message Not Found", status: 404, detail: (error as Error).message });
@@ -56,7 +57,7 @@ export class MessageController {
     }
 
     try {
-      const result = LeadService.confirmSent(req.params.id, req.body.finalContent, req.user);
+      const result = PersistentProspectService.available() ? await PersistentProspectService.confirmSent(req.params.id, req.body.finalContent, req.user) : LeadService.confirmSent(req.params.id, req.body.finalContent, req.user);
       res.status(200).json(result);
     } catch (error) {
       res.status(404).json({ title: "Message Not Found", status: 404, detail: (error as Error).message });
