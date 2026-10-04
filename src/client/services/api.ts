@@ -16,6 +16,7 @@ export class ApiClient {
 
   public static setAuthToken(token: string) {
     this.token = token;
+    if (token) localStorage.setItem("dfqlabs-os2-token", token); else localStorage.removeItem("dfqlabs-os2-token");
   }
 
   private static async request<T>(path: string, options: RequestInit & { skipAuth?: boolean } = {}): Promise<T> {
@@ -52,6 +53,8 @@ export class ApiClient {
 
   public static checkDuplicate(payload: {
     phone?: string;
+    whatsapp?: string;
+    email?: string;
     social?: string;
     website?: string;
     company?: string;
