@@ -12,6 +12,7 @@ import { ConversationsPage } from "./pages/ConversationsPage.js";
 import { FocusPage } from "./pages/FocusPage.js";
 import { PerformancePage } from "./pages/PerformancePage.js";
 import { ProspectsPage } from "./pages/ProspectsPage.js";
+import { LoginPage } from "./pages/LoginPage.js";
 
 function AppContent() {
   const { activeRole } = useAuth();
@@ -23,6 +24,10 @@ function AppContent() {
   }, [activeRole]);
 
   const renderView = () => {
+    const founderOnly = ["/admin/dashboard", "/admin/team", "/admin/intelligence"];
+    if (activeRole !== "FOUNDER" && founderOnly.includes(currentPath)) {
+      return <FocusPage onNavigate={setCurrentPath} />;
+    }
     switch (currentPath) {
       case "/focus":
         return <FocusPage onNavigate={setCurrentPath} />;

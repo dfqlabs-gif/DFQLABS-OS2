@@ -12,16 +12,16 @@ import {
 const API_BASE = "";
 
 export class ApiClient {
-  private static token = "specialist-token";
+  private static token = localStorage.getItem("dfqlabs-os2-token") || "";
 
   public static setAuthToken(token: string) {
     this.token = token;
   }
 
-  private static async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private static async request<T>(path: string, options: RequestInit & { skipAuth?: boolean } = {}): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${this.token}`,
+      ...(options.skipAuth || !this.token ? {} : { Authorization: `Bearer ${this.token}` }),
       ...(options.headers as Record<string, string>)
     };
 
@@ -36,6 +36,10 @@ export class ApiClient {
     }
 
     return res.json();
+  }
+
+  public static login(email: string, password: string): Promise<{ token: string; user: User; seat?: OutreachSeat }> {
+    return this.request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }), skipAuth: true } as RequestInit);
   }
 
   public static getHealth(): Promise<{ ok: boolean; service: string; timestamp: string }> {
