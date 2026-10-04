@@ -1,4 +1,5 @@
 import { ActivityEvent } from "../../shared/types/index.js";
+import { getSupabaseClient } from "../config/supabase.js";
 
 const eventStore: ActivityEvent[] = [];
 
