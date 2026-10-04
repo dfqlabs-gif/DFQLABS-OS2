@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { env } from "../config/env.js";
 import { LeadService } from "./leadService.js";
 import { User } from "../../shared/types/index.js";
+import { PersistentProspectService } from "./persistentProspectService.js";
 
 type SessionPayload = { sub: string; exp: number };
 
@@ -38,6 +39,7 @@ export async function authenticateCredentials(email: string, password: string): 
     id: match.id, email: match.email, fullName: match.name, role: match.role, isActive: true,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };
+  if (PersistentProspectService.available()) await PersistentProspectService.ensureUser(user);
   return { user, token: encode({ sub: user.id, exp: Date.now() + 1000 * 60 * 60 * 12 }) };
 }
 
