@@ -257,6 +257,22 @@ body {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.role-toggle-btn {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.role-toggle-btn:hover {
+  border-color: var(--accent-glacier);
+  color: var(--text-primary);
+}
+
 .page-body {
   padding: 28px;
   flex: 1;
