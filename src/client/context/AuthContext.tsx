@@ -7,6 +7,8 @@ interface AuthContextType {
   seat: OutreachSeat | null;
   loading: boolean;
   activeRole: "FOUNDER" | "OUTREACH_SPECIALIST";
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -37,9 +39,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const activeRole = user?.role ?? "OUTREACH_SPECIALIST";
+  const login = async (email: string, password: string) => {
+    const result = await ApiClient.login(email, password);
+    ApiClient.setAuthToken(result.token);
+    setUser(result.user);
+    setSeat(result.seat ?? null);
+  };
+  const logout = () => { ApiClient.setAuthToken(""); setUser(null); setSeat(null); };
 
   return (
-    <AuthContext.Provider value={{ user, seat, loading, activeRole }}>
+    <AuthContext.Provider value={{ user, seat, loading, activeRole, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
