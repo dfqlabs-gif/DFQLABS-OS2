@@ -1,15 +1,3 @@
-  public static async getById(req: Request, res: Response): Promise<void> {
-    if (PersistentProspectService.available() && req.user) {
-      const result = await PersistentProspectService.getById(req.params.id, req.user);
-      if (result) { res.status(200).json(result); return; }
-    }
-    const lead = LeadService.getLeadById(req.params.id, req.user);
-    if (!lead) { res.status(404).json({ type: "https://dfqlabs.com/errors/not-found", title: "Lead Not Found", status: 404, detail: `No lead found with ID ${req.params.id}` }); return; }
-    const conv = LeadService.getConversationForLead(lead.id);
-    const messages = conv ? LeadService.getMessagesForConversation(conv.id) : [];
-    res.status(200).json({ lead, contacts: lead.contacts ?? [], socialProfiles: lead.socialProfiles ?? [], evidence: lead.evidence ?? [], conversation: conv, messages });
-  }
-
 import { Request, Response } from "express";
 import { AIEngineService } from "../services/aiEngine.js";
 import { DuplicateEngine } from "../services/duplicateEngine.js";
