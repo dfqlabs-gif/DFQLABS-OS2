@@ -1,3 +1,15 @@
+  public static async getById(req: Request, res: Response): Promise<void> {
+    if (PersistentProspectService.available() && req.user) {
+      const result = await PersistentProspectService.getById(req.params.id, req.user);
+      if (result) { res.status(200).json(result); return; }
+    }
+    const lead = LeadService.getLeadById(req.params.id, req.user);
+    if (!lead) { res.status(404).json({ type: "https://dfqlabs.com/errors/not-found", title: "Lead Not Found", status: 404, detail: `No lead found with ID ${req.params.id}` }); return; }
+    const conv = LeadService.getConversationForLead(lead.id);
+    const messages = conv ? LeadService.getMessagesForConversation(conv.id) : [];
+    res.status(200).json({ lead, contacts: lead.contacts ?? [], socialProfiles: lead.socialProfiles ?? [], evidence: lead.evidence ?? [], conversation: conv, messages });
+  }
+
 import { Request, Response } from "express";
 import { AIEngineService } from "../services/aiEngine.js";
 import { DuplicateEngine } from "../services/duplicateEngine.js";
@@ -35,93 +47,22 @@ export class ProspectController {
 
   public static async list(req: Request, res: Response): Promise<void> {
     if (PersistentProspectService.available() && req.user) {
-      const result = await PersistentProspectService.list(req.user, { search: req.query.search as string, stage: req.query.stage as string, page: Number(req.query.page || 1), limit: Number(req.query.limit || 25) });
-      res.status(200).json(result);
-      return;
+      const result = await PersistentProspectService.list(req.user, {
+        search: req.query.search as string,
+        stage: req.query.stage as string,
+        page: Number(req.query.page || 1),
+        limit: Number(req.query.limit || 25)
+      });
+      if (result) { res.status(200).json(result); return; }
     }
-
     const leads = LeadService.getAllLeads(req.user);
-    const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "25", 10);
-
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.max(1, Number(req.query.limit || 25));
     const search = ((req.query.search as string) || "").toLowerCase();
-    let filtered = leads;
-    if (search) {
-      filtered = leads.filter(
-        (l) =>
-          l.companyName.toLowerCase().includes(search) ||
-          l.contactName?.toLowerCase().includes(search) ||
-          l.location?.toLowerCase().includes(search)
-      );
-    }
-
+    let filtered = leads.filter(l => !search || l.companyName.toLowerCase().includes(search) || l.contactName?.toLowerCase().includes(search) || l.location?.toLowerCase().includes(search));
     const stage = req.query.stage as string;
-    if (stage) {
-      filtered = filtered.filter((l) => l.pipelineStage === stage);
-    }
-
-    const total = filtered.length;
-    const startIndex = (page - 1) * limit;
-    const paginated = filtered.slice(startIndex, startIndex + limit);
-
-    res.status(200).json({
-      leads: paginated,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit) || 1
-    });
+    if (stage) filtered = filtered.filter(l => l.pipelineStage === stage);
+    res.status(200).json({ leads: filtered.slice((page-1)*limit, page*limit), total: filtered.length, page, totalPages: Math.ceil(filtered.length/limit) || 1 });
   }
 
-  public static async getById(req: Request, res: Response): Promise<void> {
-    if (PersistentProspectService.available() && req.user) {
-      const result = await PersistentProspectService.getById(req.params.id, req.user);
-      if (!result) { res.status(404).json({ title: "Lead Not Found", status: 404, detail: `No lead found with ID ${req.params.id}` }); return; }
-      res.status(200).json(result);
-      return;
-    }
 
-    const lead = LeadService.getLeadById(req.params.id, req.user);
-    if (!lead) {
-      res.status(404).json({
-        type: "https://dfqlabs.com/errors/not-found",
-        title: "Lead Not Found",
-        status: 404,
-        detail: `No lead found with ID ${req.params.id}`
-      });
-      return;
-    }
-
-    const conv = LeadService.getConversationForLead(lead.id);
-    const messages = conv ? LeadService.getMessagesForConversation(conv.id) : [];
-
-    res.status(200).json({
-      lead,
-      contacts: lead.contacts ?? [],
-      socialProfiles: lead.socialProfiles ?? [],
-      evidence: lead.evidence ?? [],
-      conversation: conv,
-      messages
-    });
-  }
-
-  public static async generateBriefing(req: Request, res: Response): Promise<void> {
-    const lead = LeadService.getLeadById(req.params.id, req.user);
-    if (!lead) {
-      res.status(404).json({ title: "Lead Not Found", status: 404 });
-      return;
-    }
-
-    const briefing = await AIEngineService.generateBriefing(lead);
-
-    if (req.user) {
-      EventService.logEvent({
-        eventType: "BRIEFING_GENERATED",
-        leadId: lead.id,
-        actorUserId: req.user.id,
-        payload: briefing as unknown as Record<string, unknown>
-      });
-    }
-
-    res.status(200).json({ briefing });
-  }
-}
