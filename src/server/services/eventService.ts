@@ -11,6 +11,10 @@ export class EventService {
       createdAt: new Date().toISOString()
     };
     eventStore.push(newEvent);
+    const db = getSupabaseClient();
+    if (db) {
+      void db.from("activities_events").insert({ id: newEvent.id, event_type: newEvent.eventType, lead_id: newEvent.leadId, actor_user_id: newEvent.actorUserId, payload: newEvent.payload, created_at: newEvent.createdAt });
+    }
     return newEvent;
   }
 
