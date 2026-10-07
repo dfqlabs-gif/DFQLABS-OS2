@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-namespace */
 import { NextFunction, Request, Response } from "express";
 import { OutreachSeat, User } from "../../shared/types/index.js";
 import { LeadService } from "../services/leadService.js";

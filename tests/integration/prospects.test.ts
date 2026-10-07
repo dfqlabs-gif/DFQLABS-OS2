@@ -1,14 +1,22 @@
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { createApp } from "../../src/server/app.js";
 
 describe("prospects endpoints", () => {
   const app = createApp();
+  let token = "";
+
+  beforeEach(async () => {
+    const res = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ email: "specialist@dfqlabs.com", password: "password123" });
+    token = res.body.token;
+  });
 
   it("checks duplicates via POST /api/v1/prospects/duplicate-check", async () => {
     const res = await request(app)
       .post("/api/v1/prospects/duplicate-check")
-      .set("Authorization", "Bearer specialist-token")
+      .set("Authorization", `Bearer ${token}`)
       .send({ phone: "08012345678" });
 
     expect(res.status).toBe(200);
@@ -18,7 +26,7 @@ describe("prospects endpoints", () => {
   it("creates a new prospect via POST /api/v1/prospects", async () => {
     const res = await request(app)
       .post("/api/v1/prospects")
-      .set("Authorization", "Bearer specialist-token")
+      .set("Authorization", `Bearer ${token}`)
       .send({
         companyName: "Guzape Heights Developer",
         contactName: "Ibrahim",
@@ -35,7 +43,7 @@ describe("prospects endpoints", () => {
   it("lists prospects via GET /api/v1/prospects", async () => {
     const res = await request(app)
       .get("/api/v1/prospects")
-      .set("Authorization", "Bearer specialist-token");
+      .set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body.leads).toBeDefined();

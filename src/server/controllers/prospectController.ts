@@ -8,7 +8,10 @@ import { PersistentProspectService } from "../services/persistentProspectService
 export class ProspectController {
   public static async duplicateCheck(req: Request, res: Response): Promise<void> {
     const existingLeads = LeadService.getAllLeads(req.user);
-    const result = PersistentProspectService.available() ? await PersistentProspectService.duplicateCheck(req.body, req.user!) : DuplicateEngine.checkForDuplicate(req.body, existingLeads);
+    const persistentResult = PersistentProspectService.available()
+      ? await PersistentProspectService.duplicateCheck(req.body, req.user!)
+      : null;
+    const result = persistentResult ?? DuplicateEngine.checkForDuplicate(req.body, existingLeads);
 
     if (req.user) {
       EventService.logEvent({
