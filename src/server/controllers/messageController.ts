@@ -64,14 +64,22 @@ export class MessageController {
     }
   }
 
-  public static logInboundReply(req: Request, res: Response): void {
+  public static async generateFollowUp(req: Request, res: Response): Promise<void> {
+    if (!req.user) { res.status(401).json({ title: "Unauthorized", status: 401 }); return; }
+    try {
+      const message = PersistentProspectService.available() ? await PersistentProspectService.generateFollowUp(req.body.leadId, req.user) : await LeadService.generateFirstTouch(req.body.leadId, req.user);
+      res.status(200).json({ message });
+    } catch (error) { res.status(404).json({ title: "Unable to generate follow-up", status: 404, detail: error instanceof Error ? error.message : "Lead not found" }); }
+  }
+
+  public static async logInboundReply(req: Request, res: Response): Promise<void> {
     if (!req.user) {
       res.status(401).json({ title: "Unauthorized", status: 401 });
       return;
     }
 
     try {
-      const message = LeadService.logInboundReply(req.params.id, req.body.content, req.user);
+      const message = PersistentProspectService.available() ? await PersistentProspectService.logInboundReply(req.params.id, req.body.content, req.body.sentAt, req.user) : LeadService.logInboundReply(req.params.id, req.body.content, req.user);
       res.status(200).json({ message });
     } catch (error) {
       res.status(404).json({ title: "Conversation Not Found", status: 404, detail: (error as Error).message });
