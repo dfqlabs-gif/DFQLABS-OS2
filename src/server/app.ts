@@ -1,5 +1,7 @@
 import cors from "cors";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
 import helmet from "helmet";
 import pino from "pino";
 import { pinoHttp } from "pino-http";
@@ -41,6 +43,19 @@ export function createApp() {
   app.use("/api/v1/dashboard", dashboardRoutes);
   app.use("/api/v1/outcomes", outcomeRoutes);
   app.use("/api/v1/admin", adminRoutes);
+
+  // Serve the compiled React application in production. API routes above remain authoritative.
+  const clientDist = path.resolve(process.cwd(), "dist/client");
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+
+    app.get("*", (req, res, next) => {
+      if (!req.accepts("html") || req.path.startsWith("/api/")) {
+        return next();
+      }
+      return res.sendFile(path.join(clientDist, "index.html"));
+    });
+  }
 
   app.use((_req, res) => {
     res.status(404).json({
