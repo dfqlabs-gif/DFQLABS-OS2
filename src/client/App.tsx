@@ -14,6 +14,7 @@ import { PerformancePage } from "./pages/PerformancePage.js";
 import { ProspectsPage } from "./pages/ProspectsPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { LeadDetailPage } from "./pages/LeadDetailPage.js";
+import { PipelinePage } from "./pages/PipelinePage.js";
 
 function AppContent() {
   const { activeRole, user, loading } = useAuth();
@@ -28,7 +29,7 @@ function AppContent() {
   if (!user) return <LoginPage />;
 
   const renderView = () => {
-    const founderOnly = ["/admin/dashboard", "/admin/team", "/admin/intelligence"];
+    const founderOnly = ["/admin/dashboard", "/pipeline", "/admin/team", "/admin/intelligence"];
     if (activeRole !== "FOUNDER" && founderOnly.includes(currentPath)) {
       return <FocusPage onNavigate={setCurrentPath} />;
     }
@@ -39,6 +40,8 @@ function AppContent() {
         return <ProspectsPage onNavigate={setCurrentPath} />;
       case "/prospects/new":
         return <AddProspectPage onNavigate={setCurrentPath} />;
+      case "/pipeline":
+        return <PipelinePage onNavigate={setCurrentPath} />;
       case "/conversations":
         return <ConversationsPage />;
       case "/performance":
@@ -63,6 +66,8 @@ function AppContent() {
         return "My Prospects Directory";
       case "/prospects/new":
         return "Capture New Prospect Dossier";
+      case "/pipeline":
+        return "Pipeline";
       case "/conversations":
         return "Conversations & DM Execution";
       case "/performance":
