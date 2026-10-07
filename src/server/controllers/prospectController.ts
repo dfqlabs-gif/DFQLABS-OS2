@@ -53,4 +53,54 @@ export class ProspectController {
     res.status(200).json({ leads: filtered.slice((page-1)*limit, page*limit), total: filtered.length, page, totalPages: Math.ceil(filtered.length/limit) || 1 });
   }
 
+  public static async getById(req: Request, res: Response): Promise<void> {
+    if (PersistentProspectService.available() && req.user) {
+      const result = await PersistentProspectService.getById(req.params.id, req.user);
+      if (result) { res.status(200).json(result); return; }
+    }
 
+    const lead = LeadService.getLeadById(req.params.id, req.user);
+    if (!lead) {
+      res.status(404).json({
+        type: "https://dfqlabs.com/errors/not-found",
+        title: "Lead Not Found",
+        status: 404,
+        detail: `No lead found with ID ${req.params.id}`
+      });
+      return;
+    }
+
+    const conv = LeadService.getConversationForLead(lead.id);
+    const messages = conv ? LeadService.getMessagesForConversation(conv.id) : [];
+
+    res.status(200).json({
+      lead,
+      contacts: lead.contacts ?? [],
+      socialProfiles: lead.socialProfiles ?? [],
+      evidence: lead.evidence ?? [],
+      conversation: conv,
+      messages
+    });
+  }
+
+  public static async generateBriefing(req: Request, res: Response): Promise<void> {
+    const lead = LeadService.getLeadById(req.params.id, req.user);
+    if (!lead) {
+      res.status(404).json({ title: "Lead Not Found", status: 404 });
+      return;
+    }
+
+    const briefing = await AIEngineService.generateBriefing(lead);
+
+    if (req.user) {
+      EventService.logEvent({
+        eventType: "BRIEFING_GENERATED",
+        leadId: lead.id,
+        actorUserId: req.user.id,
+        payload: briefing as unknown as Record<string, unknown>
+      });
+    }
+
+    res.status(200).json({ briefing });
+  }
+}
