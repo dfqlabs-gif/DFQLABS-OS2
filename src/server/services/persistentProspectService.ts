@@ -341,4 +341,56 @@ export class PersistentProspectService {
     EventService.logEvent({ eventType: "MESSAGE_SENT", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: id, finalContent } });
     return { message: mapMessage(updated as MessageRow), leadStage: "CONTACTED" };
   }
+
+  static async generateFollowUp(leadId: string, user: User): Promise<Message> {
+    const detail = await this.getById(leadId, user);
+    if (!detail) throw new Error("Lead not found");
+    const history = detail.messages.map((m) => ({
+      direction: m.direction,
+      content: m.finalSentContent || m.humanEditedContent || m.aiGeneratedContent || ""
+    })).filter((m) => m.content);
+    const { draftText, evidenceUsed } = await AIEngineService.generateFollowUp(detail.lead, history);
+    const db = getSupabaseClient();
+    if (!db || !detail.conversation) throw new Error("Conversation unavailable");
+    const { data, error } = await db.from("messages").insert({
+      conversation_id: detail.conversation.id,
+      sender_user_id: user.id,
+      direction: "OUTBOUND",
+      type: "FOLLOW_UP",
+      ai_generated_content: draftText,
+      human_edited_content: draftText,
+      status: "GENERATED",
+      evidence_used: evidenceUsed
+    }).select("*").single();
+    if (error || !data) throw new Error(error?.message || "Unable to generate follow-up");
+    EventService.logEvent({ eventType: "MESSAGE_GENERATED", leadId, actorUserId: user.id, payload: { messageId: data.id, messageType: "FOLLOW_UP" } });
+    return mapMessage(data as MessageRow);
+  }
+
+  static async logInboundReply(id: string, content: string, sentAt: string | undefined, user: User): Promise<Message> {
+    const db = getSupabaseClient();
+    if (!db) throw new Error("Database is not configured");
+    const { data: conversation, error: conversationError } = await db.from("conversations").select("*").eq("id", id).single();
+    if (conversationError || !conversation) throw new Error("Conversation not found");
+    const detail = await this.getById(conversation.lead_id, user);
+    if (!detail) throw new Error("Lead not found");
+    const timestamp = sentAt || new Date().toISOString();
+    const { data, error } = await db.from("messages").insert({
+      conversation_id: conversation.id,
+      sender_user_id: null,
+      direction: "INBOUND",
+      type: "RESPONSE",
+      human_edited_content: content,
+      final_sent_content: content,
+      status: "SENT",
+      evidence_used: [],
+      created_at: timestamp,
+      sent_at: timestamp
+    }).select("*").single();
+    if (error || !data) throw new Error(error?.message || "Unable to record inbound reply");
+    await db.from("leads").update({ pipeline_stage: "REPLIED", updated_at: new Date().toISOString() }).eq("id", conversation.lead_id);
+    await db.from("conversations").update({ last_message_at: timestamp, updated_at: new Date().toISOString() }).eq("id", conversation.id);
+    EventService.logEvent({ eventType: "INBOUND_REPLY_RECORDED", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: data.id, sentAt: timestamp } });
+    return mapMessage(data as MessageRow);
+  }
 }
