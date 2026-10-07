@@ -3,10 +3,11 @@ import React, { useEffect, useState } from "react";
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigate: (path: string) => void;\n  onToggle: () => void;
+  onNavigate: (path: string) => void;
+  onToggle?: () => void;
 }
 
-export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onNavigate, onToggle }) => {
+export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onNavigate }) => {
   const [query, setQuery] = useState("");
 
   useEffect(() => {

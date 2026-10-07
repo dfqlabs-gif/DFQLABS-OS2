@@ -15,7 +15,9 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   seat: null,
   loading: true,
-  activeRole: "OUTREACH_SPECIALIST"
+  activeRole: "OUTREACH_SPECIALIST",
+  login: async () => {},
+  logout: () => {}
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
