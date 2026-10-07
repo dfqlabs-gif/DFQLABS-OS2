@@ -1,40 +1,64 @@
 import { Lead } from "../../shared/types/index.js";
+import { env } from "../config/env.js";
 
-export interface BriefingResult {
-  overview: string;
-  keyFacts: string[];
-  recommendedHook: string;
-}
+export interface BriefingResult { overview: string; keyFacts: string[]; recommendedHook: string; }
+export interface FirstTouchDraftResult { draftText: string; evidenceUsed: string[]; }
 
-export interface FirstTouchDraftResult {
-  draftText: string;
-  evidenceUsed: string[];
+const STYLE = `DFQLABS outreach style: human, warm, concise, professional, specific, useful before asking for anything. Never fake familiarity. Never invent facts. The offer is a complimentary strategic audit worth ₦150,000. The message should feel like a thoughtful one-to-one WhatsApp message, not a mass campaign. Preserve the core intent and positioning while varying wording and sentence structure so repeated outreach does not look copied or spammy.`;
+
+async function gemini(prompt: string): Promise<string | null> {
+  if (!env.GEMINI_API_KEY) return null;
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 350 } })
+    });
+    if (!response.ok) return null;
+    const json = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    return json.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim() || null;
+  } catch { return null; }
 }
 
 export class AIEngineService {
   public static async generateBriefing(lead: Lead): Promise<BriefingResult> {
-    const verifiedFacts = lead.evidence
-      ?.filter((e) => e.category === "VERIFIED_FACT")
-      .map((e) => e.evidenceText) ?? [];
-
-    const overview = `Prospect briefing for ${lead.companyName} (${lead.businessType ?? "Real Estate"}) in ${lead.location ?? "Nigeria"}.`;
-    const keyFacts = verifiedFacts.length > 0 ? verifiedFacts : ["VERIFIED_FACT: Operating real estate firm."];
-    const hook = lead.location
-      ? `Mention localized presence in ${lead.location} and portfolio quality.`
-      : "Focus on operational scalability and sales performance.";
-
+    const verifiedFacts = lead.evidence?.filter((e) => e.category === "VERIFIED_FACT").map((e) => e.evidenceText) ?? [];
     return {
-      overview,
-      keyFacts,
-      recommendedHook: hook
+      overview: `Prospect briefing for ${lead.companyName} (${lead.businessType ?? "Real Estate"}) in ${lead.location ?? "Nigeria"}.`,
+      keyFacts: verifiedFacts.length > 0 ? verifiedFacts : ["No verified prospect-specific facts have been recorded yet."],
+      recommendedHook: lead.location ? `Use only verified observations about ${lead.location} and the prospect's content.` : "Lead with a useful observation, not generic praise."
     };
   }
 
   public static async generateFirstTouch(lead: Lead): Promise<FirstTouchDraftResult> {
-    const contactName = lead.contactName ? ` ${lead.contactName}` : "";
     const verifiedFacts = lead.evidence?.filter((e) => e.category === "VERIFIED_FACT").map((e) => e.evidenceText) ?? [];
-    const context = verifiedFacts.length ? ` I noticed this from the information we have on your business: ${verifiedFacts[0]}` : "";
-    const draftText = `Hi${contactName}, I’m reaching out from DFQLABS. We help real estate companies improve how their positioning and content turn attention into serious buyer conversations.${context} I’d be happy to share one useful observation about your current content and positioning. Would you be open to that?`;
-    return { draftText, evidenceUsed: verifiedFacts };
+    const prompt = `${STYLE}
+Generate ONE first-touch WhatsApp DM for:
+Company: ${lead.companyName}
+Contact: ${lead.contactName || "not provided"}
+Business type: ${lead.businessType || lead.description || "real estate company"}
+Location: ${lead.location || "not provided"}
+Verified facts only: ${verifiedFacts.join(" | ") || "none"}
+Rules: do not invent a project, achievement, location, follower count or prior interaction. Keep it concise. Do not say "I noticed your page" unless supported by evidence. Do not use emojis unless genuinely natural. Ask for permission to share the audit rather than dumping the pitch.`;
+    const generated = await gemini(prompt);
+    const fallback = lead.contactName
+      ? `Hi ${lead.contactName}, I’m reaching out from DFQLABS. We help real estate companies improve how their positioning and content turn attention into serious buyer conversations. We’d like to point out a few opportunities we see in your current positioning and offer a complimentary strategic audit worth ₦150,000. Would you be open to me sharing what it covers?`
+      : `Hi, I’m reaching out from DFQLABS. We help real estate companies improve how their positioning and content turn attention into serious buyer conversations. We’d like to point out a few opportunities we see in your current positioning and offer a complimentary strategic audit worth ₦150,000. Would you be open to me sharing what it covers?`;
+    return { draftText: generated || fallback, evidenceUsed: verifiedFacts };
+  }
+
+  public static async generateFollowUp(lead: Lead, history: Array<{ direction: string; content: string }>): Promise<FirstTouchDraftResult> {
+    const recent = history.slice(-8).map((m) => `${m.direction}: ${m.content}`).join("\n");
+    const prompt = `${STYLE}
+Generate ONE natural WhatsApp follow-up for this prospect. Use the actual conversation context below. If the prospect replied positively, move the conversation toward the promised complimentary strategic audit. If they did not respond, write a light, non-pushy follow-up. Do not invent commitments, dates, meetings or facts.
+Company: ${lead.companyName}
+Conversation:
+${recent}
+Return only the message text.`;
+    const generated = await gemini(prompt);
+    const fallback = history.some((m) => m.direction === "INBOUND")
+      ? `Thanks for getting back to us. Based on what you've shared, I can send over the complimentary strategic audit. Would you like me to proceed?`
+      : `Hi, just following up on my earlier message. I’d be happy to share the complimentary strategic audit if it would be useful. Would you like me to send the details?`;
+    return { draftText: generated || fallback, evidenceUsed: [] };
   }
 }
