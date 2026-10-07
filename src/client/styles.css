@@ -3,11 +3,11 @@
 }
 
 :root {
-  --bg-primary: #090a0f;
-  --bg-card: #12141d;
-  --bg-card-hover: #181b27;
-  --bg-card-active: #1d2233;
-  --border-color: #1e2330;
+  --bg-primary: #000000;
+  --bg-card: #090909;
+  --bg-card-hover: #111111;
+  --bg-card-active: #161616;
+  --border-color: #202020;
   --border-focus: #00d4ff;
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
@@ -89,7 +89,7 @@ body {
 .brand-logo {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #00d4ff, #0088ff);
+  background: var(--accent-glacier);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -181,7 +181,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: rgba(18, 20, 29, 0.7);
+  background-color: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
@@ -377,7 +377,7 @@ body {
 
 /* Buttons */
 .btn-primary {
-  background: linear-gradient(135deg, #00d4ff, #00a2ff);
+  background: var(--accent-glacier);
   color: #000;
   font-weight: 700;
   padding: 10px 20px;
@@ -542,7 +542,7 @@ tr:hover td {
 
 /* Skeleton Loading Shimmer */
 .skeleton {
-  background: linear-gradient(90deg, #12141d 25%, #1d2233 50%, #12141d 75%);
+  background: linear-gradient(90deg, #090909 25%, #171717 50%, #090909 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-sm);
@@ -632,7 +632,7 @@ tr:hover td {
 .mission-actions { display:flex; gap:10px; flex-shrink:0; }
 .dashboard-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:22px; }
 .dashboard-stat { position:relative; text-align:left; min-height:150px; padding:20px; border:1px solid var(--border-color); border-radius:16px; background:linear-gradient(180deg,#12141d,#0e1017); color:var(--text-primary); cursor:pointer; transition:transform .18s ease,border-color .18s ease,background .18s ease; }
-.dashboard-stat:hover { transform:translateY(-3px); border-color:rgba(0,212,255,.38); background:#151923; }
+.dashboard-stat:hover { transform:translateY(-3px); border-color:rgba(0,212,255,.38); background:#111111; }
 .dashboard-stat strong { display:block; font-size:38px; line-height:1; letter-spacing:-.04em; margin:16px 0 9px; }
 .stat-hint { color:var(--text-secondary); font-size:12px; }
 .stat-arrow { position:absolute; right:18px; bottom:17px; color:var(--accent-glacier); }
