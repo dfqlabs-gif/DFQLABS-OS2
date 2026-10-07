@@ -50,7 +50,7 @@ Rules: do not invent a project, achievement, location, follower count or prior i
   public static async generateFollowUp(lead: Lead, history: Array<{ direction: string; content: string }>): Promise<FirstTouchDraftResult> {
     const recent = history.slice(-8).map((m) => `${m.direction}: ${m.content}`).join("\n");
     const prompt = `${STYLE}
-Generate ONE natural WhatsApp follow-up for this prospect. Use the actual conversation context below. If the prospect replied positively, move the conversation toward the promised complimentary strategic audit. If they did not respond, write a light, non-pushy follow-up. Do not invent commitments, dates, meetings or facts.
+You are the single DFQLABS Sales Brain. Read the entire supplied conversation before writing. If the latest prospect reply is positive (for example “yes”, “sure”, “I’m interested”), acknowledge it briefly, explain that the complimentary strategic audit is normally worth ₦150,000, takes about 2–3 business days, and briefly say what the audit covers. If they ask “is this free?”, answer that directly: yes, the audit is complimentary. If they are not interested, close politely in 2–3 lines and do not keep selling. If they ask a question or raise an objection, answer that actual question rather than repeating the original pitch. If there is no reply, use a light non-pushy follow-up. Never invent facts, meetings, commitments or dates.
 Company: ${lead.companyName}
 Conversation:
 ${recent}
