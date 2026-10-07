@@ -34,6 +34,8 @@ export const InboundReplySchema = z.object({
   sentAt: z.string().datetime().optional()
 });
 
+export const GenerateFollowUpSchema = z.object({ leadId: z.string().uuid("Valid lead UUID required") });
+
 export const RecordOutcomeSchema = z.object({
   leadId: z.string().uuid("Valid lead UUID required"),
   outcomeType: z.enum([
