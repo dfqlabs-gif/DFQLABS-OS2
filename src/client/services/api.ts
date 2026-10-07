@@ -107,7 +107,21 @@ export class ApiClient {
     });
   }
 
-  public static generateFollowUp(leadId: string): Promise<{ message: Message }> {\n    return this.request("/api/v1/messages/generate-follow-up", { method: "POST", body: JSON.stringify({ leadId }) });\n  }\n\n  public static logInboundReply(conversationId: string, content: string, sentAt?: string): Promise<{ message: Message }> {\n    return this.request(`/api/v1/messages/conversations/${conversationId}/inbound`, { method: "POST", body: JSON.stringify({ content, sentAt }) });\n  }\n\n  public static updateMessageDraft(id: string, editedContent: string): Promise<{ message: Message }> {
+  public static generateFollowUp(leadId: string): Promise<{ message: Message }> {
+    return this.request("/api/v1/messages/generate-follow-up", {
+      method: "POST",
+      body: JSON.stringify({ leadId })
+    });
+  }
+
+  public static logInboundReply(conversationId: string, content: string, sentAt?: string): Promise<{ message: Message }> {
+    return this.request(`/api/v1/messages/conversations/${conversationId}/inbound`, {
+      method: "POST",
+      body: JSON.stringify({ content, sentAt })
+    });
+  }
+
+  public static updateMessageDraft(id: string, editedContent: string): Promise<{ message: Message }> {
     return this.request(`/api/v1/messages/${id}`, {
       method: "PUT",
       body: JSON.stringify({ editedContent })
