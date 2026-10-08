@@ -135,8 +135,8 @@ export class LeadFinderService {
     return {
       dailyTarget: data.daily_target,
       minimumScore: data.minimum_score,
-      locations: Array.isArray(data.locations) ? data.locations.filter((value): value is string => typeof value === "string") : DEFAULT_LOCATIONS,
-      industries: Array.isArray(data.industries) ? data.industries.filter((value): value is string => typeof value === "string") : DEFAULT_INDUSTRIES,
+      locations: Array.isArray(data.locations) ? data.locations.filter((value: unknown): value is string => typeof value === "string") : DEFAULT_LOCATIONS,
+      industries: Array.isArray(data.industries) ? data.industries.filter((value: unknown): value is string => typeof value === "string") : DEFAULT_INDUSTRIES,
       preferredContact: typeof data.preferred_contact === "string" ? data.preferred_contact : fallback.preferredContact
     };
   }
@@ -158,8 +158,8 @@ export class LeadFinderService {
     };
     const { data, error } = await db.from("lead_finder_settings").upsert(next).select("*").single();
     if (error || !data) throw new Error(error?.message || "Unable to save Lead Finder settings.");
-    return { dailyTarget: data.daily_target, minimumScore: data.minimum_score, locations: Array.isArray(data.locations) ? data.locations.filter((value): value is string => typeof value === "string") : DEFAULT_LOCATIONS,
-      industries: Array.isArray(data.industries) ? data.industries.filter((value): value is string => typeof value === "string") : DEFAULT_INDUSTRIES,
+    return { dailyTarget: data.daily_target, minimumScore: data.minimum_score, locations: Array.isArray(data.locations) ? data.locations.filter((value: unknown): value is string => typeof value === "string") : DEFAULT_LOCATIONS,
+      industries: Array.isArray(data.industries) ? data.industries.filter((value: unknown): value is string => typeof value === "string") : DEFAULT_INDUSTRIES,
       preferredContact: typeof data.preferred_contact === "string" ? data.preferred_contact : current.preferredContact };
   }
 
