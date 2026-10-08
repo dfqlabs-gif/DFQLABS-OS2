@@ -229,6 +229,28 @@ export class LeadFinderService {
     return { ...settings, target: settings.dailyTarget, newQualifiedToday: count, remaining: Math.max(0, settings.dailyTarget - count), status: count >= settings.dailyTarget ? "TARGET_MET" : "READY", lastRun: runs?.[0] || null };
   }
 
+  static async resetToday(user: User) {
+    const db = getSupabaseClient();
+    if (!db) throw new Error("Database is not configured.");
+    if (user.role !== "FOUNDER") throw new Error("Founder access is required.");
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    const { data: leads, error: fetchError } = await db.from("leads")
+      .select("id")
+      .eq("source", "LEAD_FINDER_SERPER")
+      .gte("created_at", start.toISOString())
+      .lt("created_at", end.toISOString());
+    if (fetchError) throw new Error(fetchError.message);
+    const ids = (leads || []).map((x: { id: string }) => x.id);
+    if (ids.length) {
+      const { error: deleteError } = await db.from("leads").delete().in("id", ids);
+      if (deleteError) throw new Error(deleteError.message);
+    }
+    const { error: runError } = await db.from("lead_finder_runs").delete().eq("run_date", start.toISOString().slice(0, 10));
+    if (runError) throw new Error(runError.message);
+    return { reset: true, deletedLeads: ids.length, newQualifiedToday: 0, target: (await this.getSettings()).dailyTarget };
+  }
+
   static async runDaily(user: User, requestedTarget?: number) {
     const db = getSupabaseClient();
     if (!db) throw new Error("Database is not configured.");
