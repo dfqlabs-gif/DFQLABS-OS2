@@ -463,8 +463,10 @@ export class LeadFinderService {
     let verificationSearches = 0;
     const MAX_DISCOVERY_QUERIES = Math.min(90, Math.max(30, remaining * 3));
     const MAX_DISCOVERY_RESULTS = Math.max(300, remaining * 20);
+    const VERIFICATION_CONCURRENCY = 4;
     const MAX_VERIFICATION_SEARCHES = Math.min(150, Math.max(30, remaining * 3));
 
+    let qualificationReservations = 0;
     const addCandidate = async (result: SearchResult, sourceFamily: string, location: string) => {
       const rawTitle = result.title?.trim() || "";
       const rawUrl = result.link?.trim() || "";
@@ -629,9 +631,11 @@ export class LeadFinderService {
         }
 
         const location = settings.locations.find((value) => plan.query.includes(`"${value}"`)) || settings.locations[0];
-        for (const result of results) {
-          if (created.length >= remaining) break;
-          await addCandidate(result, plan.sourceFamily, location);
+        // Verify candidates concurrently in a small bounded pool. The old serial
+        // loop made one weak result block the entire scan for several minutes.
+        for (let i = 0; i < results.length && created.length < remaining && found < MAX_DISCOVERY_RESULTS; i += VERIFICATION_CONCURRENCY) {
+          const batch = results.slice(i, i + VERIFICATION_CONCURRENCY);
+          await Promise.all(batch.map((result) => addCandidate(result, plan.sourceFamily, location)));
         }
 
         await db.from("lead_finder_runs").update({
