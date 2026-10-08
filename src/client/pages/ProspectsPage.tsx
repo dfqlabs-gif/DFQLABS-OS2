@@ -5,11 +5,11 @@ import { StatusBadge } from "../components/StatusBadge.js";
 import { useToast } from "../context/ToastContext.js";
 import { ApiClient } from "../services/api.js";
 
-export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = ({ onNavigate }) => {
+export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void; initialStage?: string }> = ({ onNavigate, initialStage = "" }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [stage, setStage] = useState("");
+  const [stage, setStage] = useState(initialStage);
   const { addToast } = useToast();
 
   const fetchLeads = (queryStr = search, queryStage = stage) => {
@@ -20,7 +20,7 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void }> = (
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchLeads("", ""); }, []);
+  useEffect(() => { fetchLeads("", initialStage); }, [initialStage]);
 
   useEffect(() => {
     const t = window.setTimeout(() => fetchLeads(search, stage), 250);
