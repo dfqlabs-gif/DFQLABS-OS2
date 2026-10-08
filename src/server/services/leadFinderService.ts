@@ -53,6 +53,15 @@ function extractEmail(text: string): string | undefined {
   return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
 }
 
+function normalizeNigeriaPhone(value?: string): string | undefined {
+  if (!value) return undefined;
+  const digits = value.replace(/\\D/g, "");
+  if (digits.length === 13 && digits.startsWith("234")) return `+${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`;
+  if (digits.length === 10) return `+234${digits}`;
+  return undefined;
+}
+
 function extractPhone(text: string): string | undefined {
   const candidates = text.match(/(?:\+?234|0)[0-9\s().-]{9,18}/g) || [];
   for (const candidate of candidates) {
