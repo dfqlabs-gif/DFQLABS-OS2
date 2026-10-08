@@ -12,6 +12,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
 
   const specialistNav = [
     { path: "/focus", label: "Today’s Focus", icon: "◉" },
+    { path: "/lead-finder", label: "Lead Finder", icon: "✦" },
     { path: "/prospects", label: "My Leads", icon: "▤" },
     { path: "/prospects/new", label: "Add Prospect", icon: "+" },
     { path: "/conversations", label: "Conversations", icon: "◌" },
@@ -20,6 +21,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
 
   const founderNav = [
     { path: "/admin/dashboard", label: "Mission Control", icon: "◆" },
+    { path: "/lead-finder", label: "Lead Finder", icon: "✦" },
     { path: "/prospects", label: "Lead Directory", icon: "▤" },
     { path: "/pipeline", label: "Pipeline", icon: "◫" },
     { path: "/conversations", label: "Conversations", icon: "◌" },

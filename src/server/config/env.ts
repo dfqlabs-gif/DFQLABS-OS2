@@ -12,6 +12,7 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  SERPER_API_KEY: z.string().optional(),
   JWT_SECRET: z.string().min(32).default("dfqlabs-os2-development-secret-change-me-32"),
   MVP_FOUNDER_EMAIL: z.string().email().default("founder@dfqlabs.com"),
   MVP_FOUNDER_PASSWORD: z.string().min(8).default("password123"),

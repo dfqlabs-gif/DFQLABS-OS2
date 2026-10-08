@@ -165,5 +165,9 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify({ seatId, newUserId })
     });
-  }
+  }  public static getLeadFinderSummary(): Promise<any> { return this.request("/api/v1/lead-finder/summary"); }
+  public static getLeadFinderHistory(): Promise<{ runs: any[] }> { return this.request("/api/v1/lead-finder/history"); }
+  public static runLeadFinder(target?: number): Promise<any> { return this.request("/api/v1/lead-finder/run", { method: "POST", body: JSON.stringify({ target }) }); }
+  public static getLeadFinderSettings(): Promise<any> { return this.request("/api/v1/lead-finder/settings"); }
+  public static saveLeadFinderSettings(payload: any): Promise<any> { return this.request("/api/v1/lead-finder/settings", { method: "PUT", body: JSON.stringify(payload) }); }
 }
