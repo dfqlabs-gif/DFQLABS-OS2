@@ -98,6 +98,10 @@ export const LeadFinderPage: React.FC = () => {
         <button className="btn-primary lead-finder-run" onClick={run} disabled={running}>
           {running ? "Scanning the market…" : "✦ Find Today’s 30"}
         </button>
+        {activeRole === "FOUNDER" && running && <button className="btn-secondary" onClick={async () => {
+          if (!window.confirm("Cancel the active Lead Finder run? This keeps any already-qualified leads and only stops the current scan.")) return;
+          try { setError(""); await ApiClient.cancelLeadFinder(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "Cancellation failed."); }
+        }}>Cancel Scan</button>}
         {activeRole === "FOUNDER" && <button className="btn-secondary" onClick={async () => {
           if (!window.confirm("Reset today’s Lead Finder batch? This removes only today’s automated Lead Finder prospects and run history.")) return;
           try {
