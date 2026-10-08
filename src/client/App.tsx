@@ -15,6 +15,7 @@ import { ProspectsPage } from "./pages/ProspectsPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { LeadDetailPage } from "./pages/LeadDetailPage.js";
 import { PipelinePage } from "./pages/PipelinePage.js";
+import { LeadFinderPage } from "./pages/LeadFinderPage.js";
 
 function AppContent() {
   const { activeRole, user, loading } = useAuth();
@@ -38,6 +39,8 @@ function AppContent() {
         return <FocusPage onNavigate={setCurrentPath} />;
       case "/prospects":
         return <ProspectsPage onNavigate={setCurrentPath} />;
+      case "/lead-finder":
+        return <LeadFinderPage />;
       case "/prospects/new":
         return <AddProspectPage onNavigate={setCurrentPath} />;
       case "/pipeline":
@@ -64,6 +67,8 @@ function AppContent() {
         return "Today's Focus Execution Engine";
       case "/prospects":
         return "My Prospects Directory";
+      case "/lead-finder":
+        return "Lead Intelligence Engine";
       case "/prospects/new":
         return "Capture New Prospect Dossier";
       case "/pipeline":
