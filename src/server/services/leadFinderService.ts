@@ -94,16 +94,41 @@ function scoreCandidate(input: { title: string; snippet: string; url: string; lo
 }
 
 async function serperSearch(query: string): Promise<SearchResult[]> {
-  const key = process.env.SERPER_API_KEY;
-  if (!key) throw new Error("Lead Finder is not configured. Add SERPER_API_KEY to the server environment.");
-  const response = await fetch("https://google.serper.dev/search", {
-    method: "POST",
-    headers: { "X-API-KEY": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ q: query, gl: "ng", hl: "en", num: 10 })
-  });
-  if (!response.ok) throw new Error(`Search provider failed with HTTP ${response.status}`);
-  const json = await response.json() as { organic?: SearchResult[] };
-  return json.organic || [];
+  const key = process.env.SERPER_API_KEY?.trim();
+  if (!key) {
+    throw new Error("Lead Finder search is not configured on the server. Add SERPER_API_KEY to the production environment.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: query, gl: "ng", hl: "en", num: 10 }),
+      signal: AbortSignal.timeout(15000)
+    });
+  } catch (error) {
+    throw new Error(`Lead Finder search provider is unreachable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const raw = await response.text();
+  let json: { organic?: SearchResult[]; message?: string; error?: string } = {};
+  try {
+    json = raw ? JSON.parse(raw) as typeof json : {};
+  } catch {
+    json = {};
+  }
+
+  if (!response.ok) {
+    const providerMessage = json.message || json.error;
+    throw new Error(`Lead Finder search provider failed with HTTP ${response.status}${providerMessage ? `: ${providerMessage}` : ""}`);
+  }
+
+  if (!Array.isArray(json.organic)) {
+    throw new Error("Lead Finder search provider returned an invalid response.");
+  }
+
+  return json.organic;
 }
 
 async function enrich(url: string): Promise<Partial<Candidate>> {
@@ -130,7 +155,10 @@ export class LeadFinderService {
     const db = getSupabaseClient();
     const fallback: LeadFinderSettings = { dailyTarget: 30, minimumScore: 70, locations: DEFAULT_LOCATIONS, industries: DEFAULT_INDUSTRIES, preferredContact: "WHATSAPP" };
     if (!db) return fallback;
-    const { data } = await db.from("lead_finder_settings").select("*").eq("id", this.SETTINGS_ID).maybeSingle();
+    const { data, error } = await db.from("lead_finder_settings").select("*").eq("id", this.SETTINGS_ID).maybeSingle();
+    if (error) {
+      throw new Error(`Lead Finder database is not ready. Apply db/migrations/003_lead_finder.sql to the production Supabase database. Database error: ${error.message}`);
+    }
     if (!data) return fallback;
     return {
       dailyTarget: data.daily_target,
@@ -171,8 +199,12 @@ export class LeadFinderService {
     const end = new Date(start); end.setDate(end.getDate()+1);
     let q = db.from("leads").select("id,discovery_score,outreach_ready,created_at,owner_user_id,discovery_run_id").eq("outreach_ready", true).not("discovery_run_id", "is", null).gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
     if (user.role !== "FOUNDER") q = q.eq("owner_user_id", user.id);
-    const { data: leads } = await q;
-    const { data: runs } = await db.from("lead_finder_runs").select("*").order("created_at",{ascending:false}).limit(5);
+    const { data: leads, error: leadsError } = await q;
+    const { data: runs, error: runsError } = await db.from("lead_finder_runs").select("*").order("created_at",{ascending:false}).limit(5);
+    if (leadsError || runsError) {
+      const dbError = leadsError?.message || runsError?.message || "Unknown database error";
+      throw new Error(`Lead Finder database schema is not ready. Apply db/migrations/003_lead_finder.sql to the production Supabase database. Database error: ${dbError}`);
+    }
     const count = leads?.length || 0;
     return { ...settings, target: settings.dailyTarget, newQualifiedToday: count, remaining: Math.max(0, settings.dailyTarget - count), status: count >= settings.dailyTarget ? "TARGET_MET" : "READY", lastRun: runs?.[0] || null };
   }
@@ -181,6 +213,9 @@ export class LeadFinderService {
     const db = getSupabaseClient();
     if (!db) throw new Error("Database is not configured.");
     const settings = await this.getSettings();
+    if (!process.env.SERPER_API_KEY?.trim()) {
+      throw new Error("Lead Finder search is not configured on the server. Add SERPER_API_KEY to the production environment.");
+    }
     const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
     const today = new Date().toISOString().slice(0,10);
     const summary = await this.getTodaySummary(user);
