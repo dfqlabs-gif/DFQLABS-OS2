@@ -39,6 +39,12 @@ function AppContent() {
         return <FocusPage onNavigate={setCurrentPath} />;
       case "/prospects":
         return <ProspectsPage onNavigate={setCurrentPath} />;
+      default:
+        if (currentPath.startsWith("/prospects?")) {
+          const query = currentPath.split("?")[1] || "";
+          const initialStage = new URLSearchParams(query).get("stage") || "";
+          return <ProspectsPage onNavigate={setCurrentPath} initialStage={initialStage} />;
+        }
       case "/lead-finder":
         return <LeadFinderPage />;
       case "/prospects/new":
