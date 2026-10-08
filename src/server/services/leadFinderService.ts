@@ -82,7 +82,7 @@ function scoreCandidate(input: { title: string; snippet: string; url: string; lo
   const industryFit = /(real estate|property|properties|realtor|realty|developer|development|homes|estate|housing|investment)/i.test(text) ? 20 : 0;
   const locationFit = text.includes(normalize(input.location)) || /nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa/i.test(text) ? 10 : 0;
   const companyQuality = /(developer|luxury|premium|estate|group|holdings|investment|properties)/i.test(text) ? 10 : 4;
-  const digitalPresence = (input.website ? 5 : 0) + (input.instagram ? 5 : 0);
+  const digitalPresence = (input.website || input.instagram) ? 10 : 0;
   const contentOpportunity = input.instagram ? (/(listing|property|home|estate|apartment|land)/i.test(text) ? 15 : 11) : 10;
   const websiteOpportunity = input.website ? 4 : 10;
   const highTicket = /(luxury|premium|commercial|investment|developer|estate|off.?plan|high.?end)/i.test(text) ? 10 : 5;
