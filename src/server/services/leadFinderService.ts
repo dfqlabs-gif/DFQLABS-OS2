@@ -116,11 +116,12 @@ function isSocial(url: string, host: string) {
 }
 
 export class LeadFinderService {
+  private static readonly SETTINGS_ID = "00000000-0000-0000-0000-000000000030";
   static async getSettings() {
     const db = getSupabaseClient();
     const fallback = { dailyTarget: 30, minimumScore: 70, locations: DEFAULT_LOCATIONS, industries: DEFAULT_INDUSTRIES, preferredContact: "WHATSAPP" };
     if (!db) return fallback;
-    const { data } = await db.from("lead_finder_settings").select("*").limit(1).maybeSingle();
+    const { data } = await db.from("lead_finder_settings").select("*").eq("id", this.SETTINGS_ID).maybeSingle();
     if (!data) return fallback;
     return {
       dailyTarget: data.daily_target,
@@ -137,6 +138,7 @@ export class LeadFinderService {
     if (!db) throw new Error("Database is not configured.");
     const current = await this.getSettings();
     const next = {
+      id: this.SETTINGS_ID,
       daily_target: Math.max(1, Math.min(500, input.dailyTarget ?? current.dailyTarget)),
       minimum_score: Math.max(50, Math.min(100, input.minimumScore ?? current.minimumScore)),
       locations: input.locations?.length ? input.locations : current.locations,
