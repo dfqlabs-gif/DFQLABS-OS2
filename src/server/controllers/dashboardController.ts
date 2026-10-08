@@ -94,7 +94,7 @@ export class DashboardController {
     const attention: string[] = [];
     if (acquisition.qualified < 30) attention.push(`Lead acquisition is ${acquisition.qualified}/30 qualified today.`);
     if (outbound7d.length && inbound7d.length / outbound7d.length < 0.1) attention.push("7-day reply rate is below 10%.");
-    if ((pendingFollowupsRes.data || []).length > 0) attention.push(`${pendingFollowupsRes.data.length} follow-up(s) are overdue.`);
+    if ((pendingFollowupsRes.data || []).length > 0) attention.push(`${(pendingFollowupsRes.data || []).length} follow-up(s) are overdue.`);
     if (positive.length > meetings.length) attention.push(`${positive.length - meetings.length} positive conversation(s) have not yet become meetings.`);
 
     res.status(200).json({
