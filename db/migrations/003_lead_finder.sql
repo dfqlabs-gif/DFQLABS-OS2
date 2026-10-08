@@ -6,6 +6,11 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS discovery_quality VARCHAR(30);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS discovery_source VARCHAR(100);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS discovery_run_id UUID;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS outreach_ready BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS discovery_provider VARCHAR(50);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS discovery_place_id VARCHAR(255);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS identity_confidence INTEGER CHECK (identity_confidence BETWEEN 0 AND 100);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS identity_signals JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS discovery_evidence JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_leads_discovery_score ON leads(discovery_score DESC);
 CREATE INDEX IF NOT EXISTS idx_leads_outreach_ready ON leads(outreach_ready, created_at DESC);
