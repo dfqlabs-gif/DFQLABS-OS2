@@ -31,8 +31,8 @@ export const AdminDashboardPage: React.FC<{ onNavigate?: (path: string) => void 
           <p>Your command center for leads, conversations, team activity and revenue opportunities.</p>
         </div>
         <div className="mission-actions">
-          <button className="btn-primary" onClick={() => onNavigate?.("/prospects/new")}>+ Add Prospect</button>
-          <button className="btn-secondary" onClick={() => onNavigate?.("/pipeline")}>Open Pipeline</button>
+          <button type="button" className="btn-primary" onClick={() => onNavigate?.("/prospects/new")}>+ Add Prospect</button>
+          <button type="button" className="btn-secondary" onClick={() => onNavigate?.("/pipeline")}>Open Pipeline</button>
         </div>
       </section>
 
