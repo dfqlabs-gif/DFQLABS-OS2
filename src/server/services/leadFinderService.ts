@@ -69,9 +69,9 @@ function extractEmail(text: string): string | undefined {
 }
 
 function extractPhone(text: string): string | undefined {
-  const candidates = text.match(/(?:\\+?234|0)[0-9\\s().-]{9,18}/g) || [];
+  const candidates = text.match(/(?:\+?234|0)[0-9\s().-]{9,18}/g) || [];
   for (const candidate of candidates) {
-    const digits = candidate.replace(/\\D/g, "");
+    const digits = candidate.replace(/\D/g, "");
     if (digits.length === 13 && digits.startsWith("234")) return `+${digits}`;
     if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`;
   }
