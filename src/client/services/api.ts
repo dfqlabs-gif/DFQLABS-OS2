@@ -178,6 +178,7 @@ export class ApiClient {
   }  public static getLeadFinderSummary(): Promise<any> { return this.request("/api/v1/lead-finder/summary"); }
   public static getLeadFinderHistory(): Promise<{ runs: any[] }> { return this.request("/api/v1/lead-finder/history"); }
   public static runLeadFinder(target?: number): Promise<any> { return this.request("/api/v1/lead-finder/run", { method: "POST", body: JSON.stringify({ target }) }); }
+  public static cancelLeadFinder(): Promise<any> { return this.request("/api/v1/lead-finder/cancel", { method: "POST" }); }
   public static resetLeadFinderToday(): Promise<any> { return this.request("/api/v1/lead-finder/reset", { method: "POST" }); }
   public static getLeadFinderSettings(): Promise<any> { return this.request("/api/v1/lead-finder/settings"); }
   public static saveLeadFinderSettings(payload: any): Promise<any> { return this.request("/api/v1/lead-finder/settings", { method: "PUT", body: JSON.stringify(payload) }); }
