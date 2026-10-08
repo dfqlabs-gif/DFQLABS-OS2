@@ -58,6 +58,13 @@ function extractPhone(text: string): string | undefined {
   return matches.map((x) => x.replace(/[^+0-9]/g, "")).find((x) => x.length >= 10 && x.length <= 14);
 }
 
+function looksLikeCompanyResult(title: string, snippet: string, url: string): boolean {
+  const text = normalize(`${title} ${snippet} ${url}`);
+  const contentOnly = /\b(study|research|survey|article|blog|why|how to|near me|find real estate|top \d+|list of|directory|report|news|guide|market trends|jobs|vacancy|pdf)\b/i;
+  if (contentOnly.test(text)) return false;
+  return /\b(real estate|realty|realtor|property|properties|developer|developers|development|homes|housing|estate|investment|holdings|group)\b/i.test(text);
+}
+
 function cleanCompanyName(title: string, url: string): string {
   let value = title.split(/\s[|–—-]\s/)[0].trim();
   value = value.replace(/\s*\((Instagram|Facebook|LinkedIn)\)\s*$/i, "").trim();
@@ -237,8 +244,9 @@ export class LeadFinderService {
       ? `("${industries.join('" OR "')}")`
       : `("real estate" OR "property" OR "realtor")`;
     for (const location of settings.locations) {
-      queries.push(`${industryPattern} "${location}" Nigeria real estate company`);
-      queries.push(`site:instagram.com ${industryPattern} "${location}" Nigeria real estate`);
+      queries.push(`site:instagram.com ${industryPattern} "${location}" Nigeria -jobs -news -article -directory`);
+      queries.push(`"${location}" Nigeria "${industries[0] || "real estate developer"}" company Instagram`);
+      queries.push(`"${location}" Nigeria real estate developer realtor properties homes -jobs -news -article -directory`);
     }
 
     const existing = await this.existingIdentifiers();
@@ -275,19 +283,21 @@ export class LeadFinderService {
         for (const result of results) {
           if (created.length + candidates.length >= remaining) break;
           found++;
-          if (!result.link || !result.title) { insufficient++; continue; }
+          if (!result.link || !result.title || !looksLikeCompanyResult(result.title, result.snippet || "", result.link)) { insufficient++; continue; }
           const url = result.link;
+          const socialInstagram = isSocial(url, "instagram.com") ? url : undefined;
           const base = {
             companyName: cleanCompanyName(result.title, url),
             location: settings.locations.find((l: string) => normalize((result.title || "") + " " + (result.snippet || "")).includes(normalize(l))) || "Nigeria",
             description: result.snippet || "",
             sourceUrl: url,
-            source: "SERPER"
+            source: "SERPER",
+            ...(socialInstagram ? { instagram: socialInstagram } : {})
           };
           const identifiers = [
             normalize(base.companyName),
             domain(url),
-            isSocial(url, "instagram.com") ? normalizeSocialIdentifier(url) : "",
+            socialInstagram ? normalizeSocialIdentifier(socialInstagram) : "",
           ].filter(Boolean);
           if (identifiers.some((identifier) => seen.has(identifier) || existing.has(identifier))) {
             duplicate++;
