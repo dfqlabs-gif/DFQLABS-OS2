@@ -103,6 +103,13 @@ export class ApiClient {
     return this.request(`/api/v1/prospects/${id}`);
   }
 
+  public static updateProspect(id: string, payload: Record<string, unknown>): Promise<{ lead: Lead }> {
+    return this.request(`/api/v1/prospects/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  }
+  public static deleteProspect(id: string): Promise<void> {
+    return this.request(`/api/v1/prospects/${id}`, { method: "DELETE" });
+  }
+
   public static generateFirstTouch(leadId: string): Promise<{ message: Message }> {
     return this.request("/api/v1/messages/generate-first-touch", {
       method: "POST",
