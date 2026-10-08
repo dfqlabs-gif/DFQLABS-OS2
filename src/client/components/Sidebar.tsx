@@ -20,7 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
   ];
 
   const founderNav = [
-    { path: "/admin/dashboard", label: "Mission Control", icon: "◆" },
+    { path: "/admin/dashboard", label: "CEO Dashboard", icon: "◆" },
     { path: "/lead-finder", label: "Lead Finder", icon: "✦" },
     { path: "/prospects", label: "Lead Directory", icon: "▤" },
     { path: "/pipeline", label: "Pipeline", icon: "◫" },
