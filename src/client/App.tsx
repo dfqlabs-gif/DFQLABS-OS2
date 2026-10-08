@@ -34,17 +34,19 @@ function AppContent() {
     if (activeRole !== "FOUNDER" && founderOnly.includes(currentPath)) {
       return <FocusPage onNavigate={setCurrentPath} />;
     }
+    if (currentPath.startsWith("/prospects/") && currentPath !== "/prospects/new") {
+      return <LeadDetailPage leadId={currentPath.split("/")[2]} onNavigate={setCurrentPath} />;
+    }
+    if (currentPath.startsWith("/prospects?")) {
+      const query = currentPath.split("?")[1] || "";
+      const initialStage = new URLSearchParams(query).get("stage") || "";
+      return <ProspectsPage onNavigate={setCurrentPath} initialStage={initialStage} />;
+    }
     switch (currentPath) {
       case "/focus":
         return <FocusPage onNavigate={setCurrentPath} />;
       case "/prospects":
         return <ProspectsPage onNavigate={setCurrentPath} />;
-      default:
-        if (currentPath.startsWith("/prospects?")) {
-          const query = currentPath.split("?")[1] || "";
-          const initialStage = new URLSearchParams(query).get("stage") || "";
-          return <ProspectsPage onNavigate={setCurrentPath} initialStage={initialStage} />;
-        }
       case "/lead-finder":
         return <LeadFinderPage />;
       case "/prospects/new":
@@ -62,7 +64,6 @@ function AppContent() {
       case "/admin/intelligence":
         return <AdminIntelligencePage />;
       default:
-        if (currentPath.startsWith("/prospects/")) return <LeadDetailPage leadId={currentPath.split("/")[2]} onNavigate={setCurrentPath} />;
         return <FocusPage onNavigate={setCurrentPath} />;
     }
   };
