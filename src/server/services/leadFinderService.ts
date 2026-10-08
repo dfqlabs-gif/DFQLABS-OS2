@@ -287,7 +287,9 @@ async function inspectWebsite(url: string, companyName: string, location: string
       (locationMatch ? 5 : 0) + (realEstateMatch ? 10 : 0)
     ));
     const strong = signals.filter((s) => ["DOMAIN_BRAND_MATCH","STRUCTURED_NAME_MATCH","PAGE_TITLE_MATCH","INSTAGRAM_HANDLE_MATCH"].includes(s));
-    if (confidence < 75 || strong.length < 2 || !realEstateMatch || !phone) return null;
+    // Phone is useful, but it is not a safe identity requirement for a DM-first acquisition workflow.
+    const outreachChannelAvailable = Boolean(phone || email || instagram || linkedin || facebook || canonical || url);
+    if (confidence < 75 || strong.length < 2 || !realEstateMatch || !outreachChannelAvailable) return null;
 
     return {
       website: canonical || url,
@@ -438,27 +440,30 @@ export class LeadFinderService {
     }).select("*").single();
     if (runError || !run) throw new Error(runError?.message || "Unable to start Lead Finder run.");
 
-    const sourceQueries = settings.locations.flatMap((location) => [
-      {
-        sourceFamily: "INSTAGRAM",
-        query: `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR developer) -jobs -news -article -directory`
-      },
-      {
-        sourceFamily: "LINKEDIN",
-        query: `site:linkedin.com/company "${location}" Nigeria ("real estate" OR property OR developer OR realtor)`
-      },
-      {
-        sourceFamily: "DIRECTORY",
-        query: `"${location}" Nigeria real estate company developer realtor properties -jobs -news -article -directory -listing`
-      }
-    ]);
+    // Multi-pass discovery: keep searching with fresh query variants until the target is reached or a hard budget is exhausted.
+    const queryVariants = [
+      { sourceFamily: "INSTAGRAM", build: (location: string) => `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR developer) -jobs -news -article -directory` },
+      { sourceFamily: "INSTAGRAM", build: (location: string) => `site:instagram.com "${location}" Nigeria ("realty" OR "property company" OR "real estate company" OR "property developer") -jobs -news -article -directory` },
+      { sourceFamily: "INSTAGRAM", build: (location: string) => `site:instagram.com "${location}" Nigeria ("luxury realtor" OR "luxury real estate" OR "property investment" OR "real estate investment") -jobs -news -article -directory` },
+      { sourceFamily: "LINKEDIN", build: (location: string) => `site:linkedin.com/company "${location}" Nigeria ("real estate" OR property OR developer OR realtor)` },
+      { sourceFamily: "LINKEDIN", build: (location: string) => `site:linkedin.com/company "${location}" Nigeria ("realty" OR "property company" OR "real estate company" OR "property development")` },
+      { sourceFamily: "LINKEDIN", build: (location: string) => `site:linkedin.com/company "${location}" Nigeria ("luxury real estate" OR "property investment" OR "real estate investment" OR housing)` },
+      { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria real estate company developer realtor properties -jobs -news -article -directory -listing` },
+      { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria realty property company developer homes agency -jobs -news -article -directory -listing` },
+      { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria luxury real estate property investment developer agency -jobs -news -article -directory -listing` }
+    ];
+    const sourceQueries = settings.locations.flatMap((location) =>
+      queryVariants.map((variant) => ({ sourceFamily: variant.sourceFamily, query: variant.build(location) }))
+    );
 
     const existing = await this.existingIdentifiers();
     const seen = new Set<string>();
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
     let verificationSearches = 0;
-    const MAX_VERIFICATION_SEARCHES = Math.max(20, remaining * 2);
+    const MAX_DISCOVERY_QUERIES = Math.min(90, Math.max(30, remaining * 3));
+    const MAX_DISCOVERY_RESULTS = Math.max(300, remaining * 20);
+    const MAX_VERIFICATION_SEARCHES = Math.min(150, Math.max(30, remaining * 3));
 
     const addCandidate = async (result: SearchResult, sourceFamily: string, location: string) => {
       const rawTitle = result.title?.trim() || "";
@@ -612,6 +617,7 @@ export class LeadFinderService {
         const { data: currentRun } = await db.from("lead_finder_runs").select("status").eq("id", run.id).maybeSingle();
         if (currentRun?.status && currentRun.status !== "RUNNING") break;
         if (created.length >= remaining) break;
+        if (providerQueries >= MAX_DISCOVERY_QUERIES || found >= MAX_DISCOVERY_RESULTS) break;
         providerQueries++;
 
         let results: SearchResult[] = [];
@@ -638,7 +644,7 @@ export class LeadFinderService {
           stats: {
             target,
             remainingBeforeRun: remaining,
-            queriesTotal: sourceQueries.length,
+            queriesTotal: Math.min(sourceQueries.length, MAX_DISCOVERY_QUERIES),
             providerQueries,
             found,
             qualified,
@@ -651,7 +657,7 @@ export class LeadFinderService {
             sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
             statusMessage: created.length >= remaining
               ? "Target reached. Finalizing verified prospects…"
-              : `Free-first discovery pass ${providerQueries} of ${sourceQueries.length}`
+              : `Discovery pass ${providerQueries} of ${Math.min(sourceQueries.length, MAX_DISCOVERY_QUERIES)} — verified ${created.length}/${remaining}`
           }
         }).eq("id", run.id);
       }
@@ -677,7 +683,13 @@ export class LeadFinderService {
           industries: settings.industries,
           discoveryProvider: "SERPER_MULTI_SOURCE",
           sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
-          verificationSearches
+          verificationSearches,
+          discoveryBudget: { maxQueries: MAX_DISCOVERY_QUERIES, maxResults: MAX_DISCOVERY_RESULTS, queriesUsed: providerQueries, resultsFound: found },
+          statusMessage: created.length >= remaining
+            ? "Target reached."
+            : providerQueries >= MAX_DISCOVERY_QUERIES || found >= MAX_DISCOVERY_RESULTS
+              ? `Discovery budget exhausted: ${created.length} of ${remaining} qualified.`
+              : "Discovery pass completed."
         },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
