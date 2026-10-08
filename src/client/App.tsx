@@ -69,6 +69,8 @@ function AppContent() {
   };
 
   const getPageTitle = () => {
+    if (currentPath.startsWith("/prospects?")) return "Lead Directory";
+    if (currentPath.startsWith("/prospects/")) return "Prospect Profile";
     switch (currentPath) {
       case "/focus":
         return "Today's Focus Execution Engine";
