@@ -505,6 +505,28 @@ export class LeadService {
     return items;
   }
 
+  public static async getMissionControlMetricsAsync(user?: User): Promise<MissionControlMetrics> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return this.getMissionControlMetrics();
+
+    let query = supabase.from("leads").select("pipeline_stage", { count: "exact", head: false });
+    if (user && user.role !== "FOUNDER") query = query.eq("owner_user_id", user.id);
+    const { data, error } = await query;
+    if (error) throw new Error(`Unable to load Mission Control metrics: ${error.message}`);
+
+    const rows = data || [];
+    return {
+      totalLeads: rows.length,
+      uncontactedLeads: rows.filter((l) => l.pipeline_stage === "UNCONTACTED").length,
+      contactedLeads: rows.filter((l) => l.pipeline_stage === "CONTACTED").length,
+      repliedLeads: rows.filter((l) => l.pipeline_stage === "REPLIED").length,
+      meetingsScheduled: rows.filter((l) => l.pipeline_stage === "MEETING_SCHEDULED").length,
+      outreachGoalTarget: 30,
+      outreachCompletedToday: 0,
+      activeSeats: this.getSeats().length
+    };
+  }
+
   public static getMissionControlMetrics(): MissionControlMetrics {
     return {
       totalLeads: leadsStore.length,
