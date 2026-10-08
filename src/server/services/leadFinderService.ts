@@ -226,16 +226,19 @@ export class LeadFinderService {
     if (running) throw new Error("A Lead Finder run is already in progress.");
 
     const { data: run, error: runError } = await db.from("lead_finder_runs").insert({
-      run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id
+      run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id,
+      stats: { target, remainingBeforeRun: remaining, statusMessage: "Preparing market scan…" }
     }).select("*").single();
     if (runError || !run) throw new Error(runError?.message || "Unable to start Lead Finder run.");
 
     const queries: string[] = [];
+    const industries = settings.industries.slice(0, 4);
+    const industryPattern = industries.length
+      ? `("${industries.join('" OR "')}")`
+      : `("real estate" OR "property" OR "realtor")`;
     for (const location of settings.locations) {
-      for (const industry of settings.industries.slice(0, 3)) {
-        queries.push(`"${industry}" "${location}" Nigeria real estate company`);
-        queries.push(`site:instagram.com "${industry}" "${location}" Nigeria`);
-      }
+      queries.push(`${industryPattern} "${location}" Nigeria real estate company`);
+      queries.push(`site:instagram.com ${industryPattern} "${location}" Nigeria real estate`);
     }
 
     const existing = await this.existingIdentifiers();
@@ -244,6 +247,22 @@ export class LeadFinderService {
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
 
     try {
+      await db.from("lead_finder_runs").update({
+        stats: {
+          target,
+          remainingBeforeRun: remaining,
+          queriesTotal: queries.length,
+          providerQueries: 0,
+          found,
+          qualified,
+          duplicate,
+          rejected,
+          insufficient,
+          created: 0,
+          statusMessage: "Scanning configured markets…"
+        }
+      }).eq("id", run.id);
+
       for (const query of queries) {
         if (created.length >= remaining) break;
         providerQueries++;
@@ -275,7 +294,6 @@ export class LeadFinderService {
             duplicate++;
             continue;
           }
-          for (const identifier of candidateIdentifiers) seen.add(identifier);
 
           const enrichment = await enrich(url);
           const merged = { ...base, ...enrichment };
@@ -287,11 +305,20 @@ export class LeadFinderService {
             merged.email ? normalize(merged.email) : "",
             merged.phone ? normalize(merged.phone) : "",
           ].filter(Boolean);
-          if (enrichedIdentifiers.some((identifier) => existing.has(identifier) || seen.has(identifier))) {
+
+          // The candidate's own URL/domain/social handle may reappear during
+          // enrichment. Only reject identifiers that collide with another
+          // candidate or an existing CRM record.
+          const baseIdentifierSet = new Set(candidateIdentifiers);
+          if (enrichedIdentifiers.some((identifier) =>
+            !baseIdentifierSet.has(identifier) && (existing.has(identifier) || seen.has(identifier))
+          )) {
             duplicate++;
             continue;
           }
-          for (const identifier of enrichedIdentifiers) seen.add(identifier);
+          for (const identifier of [...candidateIdentifiers, ...enrichedIdentifiers]) {
+            seen.add(identifier);
+          }
 
           const scoreData = scoreCandidate({
             title: result.title || "", snippet: result.snippet || "", url,
@@ -326,6 +353,30 @@ export class LeadFinderService {
           }).eq("id", lead.id);
           created.push({ ...merged, score: scoreData.score, quality, outreachReady: true, breakdown: scoreData.breakdown });
         }
+
+        await db.from("lead_finder_runs").update({
+          provider_queries: providerQueries,
+          found_count: found,
+          qualified_count: qualified,
+          duplicate_count: duplicate,
+          rejected_count: rejected,
+          insufficient_count: insufficient,
+          stats: {
+            target,
+            remainingBeforeRun: remaining,
+            queriesTotal: queries.length,
+            providerQueries,
+            found,
+            qualified,
+            duplicate,
+            rejected,
+            insufficient,
+            created: created.length,
+            statusMessage: created.length >= remaining
+              ? "Target reached. Finalizing the CRM update…"
+              : `Scanning market: query ${providerQueries} of ${queries.length}`
+          }
+        }).eq("id", run.id);
       }
       const status = created.length >= remaining ? "COMPLETED" : "PARTIAL";
       await db.from("lead_finder_runs").update({
