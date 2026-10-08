@@ -287,9 +287,9 @@ async function inspectWebsite(url: string, companyName: string, location: string
       (locationMatch ? 5 : 0) + (realEstateMatch ? 10 : 0)
     ));
     const strong = signals.filter((s) => ["DOMAIN_BRAND_MATCH","STRUCTURED_NAME_MATCH","PAGE_TITLE_MATCH","INSTAGRAM_HANDLE_MATCH"].includes(s));
-    // Phone is useful, but it is not a safe identity requirement for a DM-first acquisition workflow.
-    const outreachChannelAvailable = Boolean(phone || email || instagram || linkedin || facebook || canonical || url);
-    if (confidence < 75 || strong.length < 2 || !realEstateMatch || !outreachChannelAvailable) return null;
+    // WhatsApp is the team's actual outbound channel. A prospect is not qualified
+    // unless the verified company identity exposes a usable Nigerian phone number.
+    if (confidence < 75 || strong.length < 2 || !realEstateMatch || !phone) return null;
 
     return {
       website: canonical || url,
