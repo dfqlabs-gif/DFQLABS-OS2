@@ -87,7 +87,7 @@ function AppContent() {
       case "/performance":
         return "My Performance & Targets";
       case "/admin/dashboard":
-        return "Founder Mission Control";
+        return "CEO Command Center";
       case "/admin/team":
         return "Team & Seat Management";
       case "/admin/intelligence":
