@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticateUser } from "../middleware/auth.js";
-import { requireFounder } from "../middleware/rbac.js";
+import { requireRole } from "../middleware/rbac.js";
 import { LeadFinderController } from "../controllers/leadFinderController.js";
 
 const router = Router();
@@ -9,5 +9,5 @@ router.get("/summary", LeadFinderController.summary);
 router.get("/settings", LeadFinderController.settings);
 router.get("/history", LeadFinderController.history);
 router.post("/run", LeadFinderController.run);
-router.put("/settings", requireFounder, LeadFinderController.saveSettings);
+router.put("/settings", requireRole("FOUNDER"), LeadFinderController.saveSettings);
 export default router;
