@@ -190,6 +190,177 @@ function isSocial(url: string, host: string) {
   return new RegExp(`(^|\\.)${host.replace(".", "\\.")}$`, "i").test(domain(url));
 }
 
+
+
+async function googlePlacesSearch(textQuery: string, includedType?: string): Promise<Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; types?: string[] }>> {
+  const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
+  if (!key) throw new Error("Lead Finder discovery is not configured on the server. Add GOOGLE_PLACES_API_KEY to the production environment.");
+  const body: Record<string, unknown> = { textQuery, pageSize: 20, regionCode: "NG", languageCode: "en" };
+  if (includedType) { body.includedType = includedType; body.strictTypeFiltering = true; }
+
+  let response: Response;
+  try {
+    response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.types"
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000)
+    });
+  } catch (error) {
+    throw new Error(\`Google Places discovery is unreachable: \${error instanceof Error ? error.message : String(error)}\`);
+  }
+
+  const raw = await response.text();
+  let json: { places?: Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; types?: string[] }>; error?: { message?: string } } = {};
+  try { json = raw ? JSON.parse(raw) : {}; } catch { json = {}; }
+  if (!response.ok) {
+    throw new Error(\`Google Places discovery failed with HTTP \${response.status}\${json.error?.message ? \`: \${json.error.message}\` : ""}\`);
+  }
+  return Array.isArray(json.places) ? json.places : [];
+}
+
+function tokenOverlap(a?: string, b?: string): number {
+  const left = new Set(normalize(a).split(" ").filter((x) => x.length >= 3));
+  const right = new Set(normalize(b).split(" ").filter((x) => x.length >= 3));
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const token of left) if (right.has(token)) shared++;
+  return shared / Math.max(left.size, right.size);
+}
+
+function domainBrand(value?: string): string {
+  try {
+    const host = new URL(value || "").hostname.replace(/^www\./i, "").toLowerCase();
+    const parts = host.split(".");
+    return normalize(parts.length > 2 ? parts.slice(0, -2).join(" ") : parts[0]);
+  } catch { return ""; }
+}
+
+function realEstateEvidence(text: string): boolean {
+  return /\b(real estate|realty|realtor|property|properties|developer|development|homes|housing|estate|investment|investments|holdings|land|residential|commercial)\b/i.test(text);
+}
+
+function listingLikeUrl(url: string): boolean {
+  return /\b(search|listing|for-sale|for-rent|blog|article|news|category|tag|author|jobs|vacancy|pdf|youtube)\b/i.test(url);
+}
+
+function parseWebsiteIdentity(html: string) {
+  const structuredNames: string[] = [];
+  const structuredPhones: string[] = [];
+  const sameAs: string[] = [];
+  for (const block of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    for (const m of block[1].matchAll(/["']name["']\s*:\s*["']([^"']{2,200})["']/gi)) structuredNames.push(m[1]);
+    for (const m of block[1].matchAll(/["']telephone["']\s*:\s*["']([^"']{5,40})["']/gi)) structuredPhones.push(m[1]);
+    for (const m of block[1].matchAll(/["']sameAs["']\s*:\s*(?:\[\s*)?["'](https?:\/\/[^"']+)["']/gi)) sameAs.push(m[1]);
+  }
+  return {
+    name: structuredNames[0],
+    telephone: structuredPhones[0],
+    sameAs: [...new Set(sameAs)]
+  };
+}
+
+async function inspectWebsite(url: string, companyName: string, location: string): Promise<{ website?: string; instagram?: string; facebook?: string; linkedin?: string; email?: string; phone?: string; description?: string; confidence: number; signals: string[]; evidence: Record<string, unknown> } | null> {
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "DFQLABS-LeadFinder/2.0 (+https://dfqlabs.com.ng)" },
+      signal: AbortSignal.timeout(7000)
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const identity = parseWebsiteIdentity(html);
+    const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() || "";
+    const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)/i)?.[1];
+    const siteName = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)/i)?.[1] || "";
+    const compact = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;|&#160;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const instagram = identity.sameAs.find((s) => /instagram\.com/i.test(s)) || html.match(/https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.-]+/i)?.[0];
+    const facebook = identity.sameAs.find((s) => /facebook\.com/i.test(s)) || html.match(/https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9_.-]+/i)?.[0];
+    const linkedin = identity.sameAs.find((s) => /linkedin\.com\/(?:company|in)\//i.test(s)) || html.match(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.-]+/i)?.[0];
+    const email = extractEmail(compact);
+    const phone = extractPhone(identity.telephone || "") || extractPhone(compact);
+    const siteIdentity = identity.name || siteName;
+    const nameOverlap = tokenOverlap(companyName, siteIdentity);
+    const titleOverlap = tokenOverlap(companyName, title);
+    const domainOverlap = tokenOverlap(companyName, domainBrand(url));
+    const locationMatch = normalize(compact).includes(normalize(location));
+    const realEstateMatch = realEstateEvidence(\`\${title} \${siteIdentity} \${compact.slice(0, 12000)}\`);
+    const signals: string[] = [];
+    if (domainOverlap >= 0.34) signals.push("DOMAIN_BRAND_MATCH");
+    if (nameOverlap >= 0.5) signals.push("STRUCTURED_NAME_MATCH");
+    if (titleOverlap >= 0.5) signals.push("PAGE_TITLE_MATCH");
+    if (locationMatch) signals.push("LOCATION_MATCH");
+    if (realEstateMatch) signals.push("REAL_ESTATE_CONTENT_MATCH");
+    if (instagram && tokenOverlap(companyName, instagram.split("/").filter(Boolean).pop()) >= 0.5) signals.push("INSTAGRAM_HANDLE_MATCH");
+
+    const confidence = Math.min(100, Math.round(
+      domainOverlap * 40 + nameOverlap * 30 + titleOverlap * 15 +
+      (locationMatch ? 5 : 0) + (realEstateMatch ? 10 : 0)
+    ));
+    const strong = signals.filter((s) => ["DOMAIN_BRAND_MATCH","STRUCTURED_NAME_MATCH","PAGE_TITLE_MATCH","INSTAGRAM_HANDLE_MATCH"].includes(s));
+    if (confidence < 75 || strong.length < 2 || !realEstateMatch || !phone) return null;
+
+    return {
+      website: canonical || url,
+      instagram, facebook, linkedin, email, phone,
+      description: cleanDiscoveryText(compact),
+      confidence,
+      signals,
+      evidence: {
+        pageTitle: title || null,
+        siteName: siteName || null,
+        structuredName: siteIdentity || null,
+        canonical: canonical || null,
+        structuredTelephone: identity.telephone || null
+      }
+    };
+  } catch { return null; }
+}
+
+async function resolveVerifiedWebsite(companyName: string, location: string): Promise<Awaited<ReturnType<typeof inspectWebsite>> | null> {
+  const key = process.env.SERPER_API_KEY?.trim();
+  if (!key) return null;
+  const queries = [
+    \`"\${companyName}" "\${location}" Nigeria real estate official website\`,
+    \`"\${companyName}" "\${location}" Nigeria real estate\`
+  ];
+  const results: SearchResult[] = [];
+  for (const query of queries) {
+    try { results.push(...await serperSearch(query, 6)); } catch { /* enrichment is best effort */ }
+    if (results.length >= 10) break;
+  }
+
+  const ranked = results
+    .filter((r) => r.link && !listingLikeUrl(r.link) && !isSocial(r.link, "instagram.com") && !isSocial(r.link, "facebook.com") && !isSocial(r.link, "linkedin.com"))
+    .map((r) => ({
+      url: r.link!,
+      score:
+        tokenOverlap(companyName, r.title) * 45 +
+        tokenOverlap(companyName, domainBrand(r.link)) * 30 +
+        (realEstateEvidence(\`\${r.title || ""} \${r.snippet || ""}\`) ? 15 : 0) +
+        (normalize(\`\${r.title || ""} \${r.snippet || ""}\`).includes(normalize(location)) ? 10 : 0)
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+
+  for (const candidate of ranked) {
+    const verified = await inspectWebsite(candidate.url, companyName, location);
+    if (verified) return verified;
+  }
+  return null;
+}
+
 export class LeadFinderService {
   private static readonly SETTINGS_ID = "00000000-0000-0000-0000-000000000030";
   static async getSettings(): Promise<LeadFinderSettings> {
@@ -254,33 +425,28 @@ export class LeadFinderService {
     const db = getSupabaseClient();
     if (!db) throw new Error("Database is not configured.");
     const settings = await this.getSettings();
-    if (!process.env.SERPER_API_KEY?.trim()) {
-      throw new Error("Lead Finder search is not configured on the server. Add SERPER_API_KEY to the production environment.");
-    }
+    if (!process.env.GOOGLE_PLACES_API_KEY?.trim()) throw new Error("Lead Finder discovery is not configured on the server. Add GOOGLE_PLACES_API_KEY to the production environment.");
+    if (!process.env.SERPER_API_KEY?.trim()) throw new Error("Lead Finder enrichment is not configured on the server. Add SERPER_API_KEY to the production environment.");
+
     const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
-    const today = new Date().toISOString().slice(0,10);
     const summary = await this.getTodaySummary(user);
     const remaining = Math.max(0, target - summary.newQualifiedToday);
     if (remaining === 0) return { ...summary, created: [], message: "Today's qualified prospect target is already met." };
 
-    const { data: running } = await db.from("lead_finder_runs").select("id").eq("run_date", today).eq("status","RUNNING").limit(1).maybeSingle();
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: running } = await db.from("lead_finder_runs").select("id").eq("run_date", today).eq("status", "RUNNING").limit(1).maybeSingle();
     if (running) throw new Error("A Lead Finder run is already in progress.");
 
     const { data: run, error: runError } = await db.from("lead_finder_runs").insert({
       run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id,
-      stats: { target, remainingBeforeRun: remaining, statusMessage: "Preparing market scan…" }
+      stats: { target, remainingBeforeRun: remaining, discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER" }
     }).select("*").single();
     if (runError || !run) throw new Error(runError?.message || "Unable to start Lead Finder run.");
 
-    const queries: string[] = [];
-    const industries = settings.industries.slice(0, 4);
-    const industryPattern = industries.length
-      ? `("${industries.join('" OR "')}")`
-      : `("real estate" OR "property" OR "realtor")`;
-    for (const location of settings.locations) {
-      queries.push(`${industryPattern} "${location}" Nigeria real estate company`);
-      queries.push(`site:instagram.com ${industryPattern} "${location}" Nigeria real estate`);
-    }
+    const queryPlan = settings.locations.flatMap((location) => [
+      { query: \`real estate agencies in \${location}, Nigeria\`, includedType: "real_estate_agency" },
+      { query: \`real estate developers and property companies in \${location}, Nigeria\` }
+    ]);
 
     const existing = await this.existingIdentifiers();
     const seen = new Set<string>();
@@ -288,118 +454,109 @@ export class LeadFinderService {
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
 
     try {
-      await db.from("lead_finder_runs").update({
-        stats: {
-          target,
-          remainingBeforeRun: remaining,
-          queriesTotal: queries.length,
-          providerQueries: 0,
-          found,
-          qualified,
-          duplicate,
-          rejected,
-          insufficient,
-          created: 0,
-          statusMessage: "Scanning configured markets…"
-        }
-      }).eq("id", run.id);
-
-      for (const query of queries) {
+      for (const plan of queryPlan) {
         if (created.length >= remaining) break;
         providerQueries++;
-        let results: SearchResult[] = [];
-        try { results = await serperSearch(query); } catch (error) {
-          if (providerQueries === 1) throw error;
-          continue;
-        }
-        const candidates: Array<{ result: SearchResult; base: any; identifiers: string[]; url: string }> = [];
-        for (const result of results) {
-          if (created.length + candidates.length >= remaining) break;
-          found++;
-          if (!result.link || !result.title) { insufficient++; continue; }
-          const url = result.link;
-          if (!looksLikeCompanyResult(result.title, result.snippet || "", url)) { rejected++; continue; }
-          const base = {
-            companyName: cleanCompanyName(result.title, url),
-            location: settings.locations.find((l: string) => normalize((result.title || "") + " " + (result.snippet || "")).includes(normalize(l))) || "Nigeria",
-            description: cleanDiscoveryText(result.snippet),
-            sourceUrl: url,
-            source: "SERPER"
-          };
-          const identifiers = [
-            normalize(base.companyName),
-            domain(url),
-            isSocial(url, "instagram.com") ? normalizeSocialIdentifier(url) : "",
-          ].filter(Boolean);
-          if (identifiers.some((identifier) => seen.has(identifier) || existing.has(identifier))) {
-            duplicate++;
-            continue;
-          }
-          for (const identifier of identifiers) seen.add(identifier);
-          candidates.push({ result, base, identifiers, url });
-        }
+        let places: Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; types?: string[] }> = [];
+        try { places = await googlePlacesSearch(plan.query, plan.includedType); }
+        catch (error) { if (providerQueries === 1) throw error; continue; }
 
-        const enrichedCandidates = await Promise.all(
-          candidates.map(async (candidate) => ({
-            ...candidate,
-            enrichment: await enrich(candidate.url)
-          }))
-        );
-
-        for (const candidate of enrichedCandidates) {
+        for (const place of places) {
           if (created.length >= remaining) break;
-          const { result, base, identifiers, url, enrichment } = candidate;
-          const merged = { ...base, ...enrichment };
-          const enrichedIdentifiers = [
-            merged.website ? domain(merged.website) : "",
-            merged.instagram ? normalizeSocialIdentifier(merged.instagram) : "",
-            merged.facebook ? normalizeSocialIdentifier(merged.facebook) : "",
-            merged.linkedin ? normalizeSocialIdentifier(merged.linkedin) : "",
-            merged.email ? normalize(merged.email) : "",
-            merged.phone ? normalize(merged.phone) : "",
-          ].filter(Boolean);
+          found++;
+          const companyName = place.displayName?.text?.trim();
+          if (!companyName || !place.id) { insufficient++; continue; }
 
-          const baseIdentifierSet = new Set(identifiers);
-          if (enrichedIdentifiers.some((identifier) =>
-            !baseIdentifierSet.has(identifier) && (existing.has(identifier) || seen.has(identifier))
-          )) {
-            duplicate++;
+          const location = settings.locations.find((l) => normalize(place.formattedAddress).includes(normalize(l)))
+            || plan.query.split(",")[0].replace(/^real estate agencies? in /i, "").replace(/^real estate developers and property companies in /i, "").trim();
+          const googleTypes = Array.isArray(place.types) ? place.types : [];
+          if (!realEstateEvidence(\`\${companyName} \${googleTypes.join(" ")}\`)) { rejected++; continue; }
+
+          const companyKey = normalize(companyName);
+          if (existing.has(companyKey) || seen.has(companyKey)) { duplicate++; continue; }
+          seen.add(companyKey);
+
+          const verified = await resolveVerifiedWebsite(companyName, location);
+          if (!verified || !verified.phone || verified.confidence < 75 || verified.signals.filter((s) => ["DOMAIN_BRAND_MATCH","STRUCTURED_NAME_MATCH","PAGE_TITLE_MATCH","INSTAGRAM_HANDLE_MATCH"].includes(s)).length < 2) {
+            rejected++;
             continue;
           }
-          for (const identifier of enrichedIdentifiers) seen.add(identifier);
+
+          const phone = normalizeNigeriaPhone(verified.phone);
+          if (!phone) { rejected++; continue; }
+
+          const identifiers = [
+            phone,
+            verified.website ? domain(verified.website) : "",
+            verified.instagram ? normalizeSocialIdentifier(verified.instagram) : ""
+          ].filter(Boolean);
+          if (identifiers.some((id) => existing.has(normalize(id)) || seen.has(normalize(id)))) { duplicate++; continue; }
+          identifiers.forEach((id) => seen.add(normalize(id)));
 
           const scoreData = scoreCandidate({
-            title: result.title || "", snippet: result.snippet || "", url,
-            location: base.location, industry: settings.industries[0],
-            website: merged.website, instagram: merged.instagram, email: merged.email, phone: merged.phone
+            title: companyName,
+            snippet: verified.description || "",
+            url: verified.website || "",
+            location,
+            industry: settings.industries[0] || "real estate",
+            website: verified.website,
+            instagram: verified.instagram,
+            email: verified.email,
+            phone,
+            googleTypes
           });
           const quality = qualityFor(scoreData.score);
-          const outreachReady = scoreData.score >= settings.minimumScore && Boolean(merged.phone);
-          if (!outreachReady) { rejected++; continue; }
-          qualified++;
+          if (scoreData.score < settings.minimumScore) { rejected++; continue; }
+
           const lead = await PersistentProspectService.create({
-            companyName: merged.companyName,
+            companyName,
             businessType: "REAL ESTATE",
-            location: merged.location,
-            description: merged.description,
-            phone: merged.phone,
-            whatsapp: merged.phone,
-            email: merged.email,
-            instagram: merged.instagram,
-            website: merged.website,
-            source: "LEAD_FINDER_SERPER",
+            location,
+            description: verified.description || \`Verified Google business discovery for \${companyName}.\`,
+            phone,
+            whatsapp: phone,
+            email: verified.email,
+            instagram: verified.instagram,
+            website: verified.website,
+            source: "LEAD_FINDER_GOOGLE_PLACES",
             clientType: "AUTOMATED_DISCOVERY",
             serviceTier: quality
           }, user);
-          await db.from("leads").update({
+
+          const evidence = {
+            googlePlaceId: place.id,
+            googleName: companyName,
+            googleAddress: place.formattedAddress || null,
+            googleTypes,
+            website: verified.website || null,
+            identityConfidence: verified.confidence,
+            identitySignals: verified.signals,
+            enrichmentEvidence: verified.evidence
+          };
+
+          const { error: updateError } = await db.from("leads").update({
             discovery_score: scoreData.score,
             discovery_quality: quality,
-            discovery_source: "SERPER",
+            discovery_source: "GOOGLE_PLACES",
+            discovery_provider: "GOOGLE_PLACES",
+            discovery_place_id: place.id,
+            identity_confidence: verified.confidence,
+            identity_signals: verified.signals,
+            discovery_evidence: evidence,
             discovery_run_id: run.id,
             outreach_ready: true,
             updated_at: new Date().toISOString()
           }).eq("id", lead.id);
-          created.push({ ...merged, score: scoreData.score, quality, outreachReady: true, breakdown: scoreData.breakdown });
+          if (updateError) throw new Error(\`Lead Finder saved the prospect but could not persist verification evidence: \${updateError.message}\`);
+
+          qualified++;
+          created.push({
+            companyName, location, description: verified.description || "",
+            website: verified.website, instagram: verified.instagram, facebook: verified.facebook,
+            linkedin: verified.linkedin, email: verified.email, phone, sourceUrl: verified.website,
+            source: "GOOGLE_PLACES", score: scoreData.score, quality,
+            outreachReady: true, breakdown: scoreData.breakdown
+          });
         }
 
         await db.from("lead_finder_runs").update({
@@ -410,42 +567,37 @@ export class LeadFinderService {
           rejected_count: rejected,
           insufficient_count: insufficient,
           stats: {
-            target,
-            remainingBeforeRun: remaining,
-            queriesTotal: queries.length,
-            providerQueries,
-            found,
-            qualified,
-            duplicate,
-            rejected,
-            insufficient,
-            created: created.length,
-            statusMessage: created.length >= remaining
-              ? "Target reached. Finalizing the CRM update…"
-              : `Scanning market: query ${providerQueries} of ${queries.length}`
+            target, remainingBeforeRun: remaining, queriesTotal: queryPlan.length, providerQueries,
+            found, qualified, duplicate, rejected, insufficient, created: created.length,
+            discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER",
+            statusMessage: created.length >= remaining ? "Target reached. Finalizing verified prospects…" : \`Google discovery pass \${providerQueries} of \${queryPlan.length}\`
           }
         }).eq("id", run.id);
       }
+
       const status = created.length >= remaining ? "COMPLETED" : "PARTIAL";
       await db.from("lead_finder_runs").update({
         status, found_count: found, qualified_count: qualified, duplicate_count: duplicate,
         rejected_count: rejected, insufficient_count: insufficient, provider_queries: providerQueries,
-        stats: { target, remainingBeforeRun: remaining, created: created.length, locations: settings.locations, industries: settings.industries },
+        stats: {
+          target, remainingBeforeRun: remaining, created: created.length, locations: settings.locations,
+          industries: settings.industries, discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER"
+        },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
+
       const final = await this.getTodaySummary(user);
       return { ...final, created, runId: run.id, stats: { found, qualified, duplicate, rejected, insufficient, providerQueries } };
     } catch (error) {
       await db.from("lead_finder_runs").update({
         status: "FAILED", found_count: found, qualified_count: qualified, duplicate_count: duplicate,
         rejected_count: rejected, insufficient_count: insufficient, provider_queries: providerQueries,
-        stats: { error: error instanceof Error ? error.message : String(error) },
+        stats: { error: error instanceof Error ? error.message : String(error), discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER" },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
       throw error;
     }
   }
-
   private static async existingIdentifiers(): Promise<Set<string>> {
     const db = getSupabaseClient();
     const identifiers = new Set<string>();
@@ -469,7 +621,7 @@ export class LeadFinderService {
     const end = new Date(start); end.setDate(end.getDate() + 1);
     const { data: leads, error: fetchError } = await db.from("leads")
       .select("id")
-      .eq("source", "LEAD_FINDER_SERPER")
+      .in("source", ["LEAD_FINDER_SERPER", "LEAD_FINDER_GOOGLE_PLACES"])
       .gte("created_at", start.toISOString())
       .lt("created_at", end.toISOString());
     if (fetchError) throw new Error(fetchError.message);
