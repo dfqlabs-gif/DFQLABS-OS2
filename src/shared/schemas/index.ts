@@ -17,6 +17,8 @@ export const CreateProspectSchema = z.object({
   description: z.string().optional(), clientType: z.string().optional(), source: z.string().optional(), serviceTier: z.string().optional()
 });
 
+export const UpdateProspectSchema = CreateProspectSchema.partial();
+
 export const GenerateFirstTouchSchema = z.object({
   leadId: z.string().uuid("Valid lead UUID required")
 });
