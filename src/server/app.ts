@@ -14,6 +14,7 @@ import focusRoutes from "./routes/focus.js";
 import messageRoutes from "./routes/messages.js";
 import outcomeRoutes from "./routes/outcomes.js";
 import prospectRoutes from "./routes/prospects.js";
+import leadFinderRoutes from "./routes/leadFinder.js";
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
 
@@ -38,6 +39,7 @@ export function createApp() {
   // API v1 Routes
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/prospects", prospectRoutes);
+  app.use("/api/v1/lead-finder", leadFinderRoutes);
   app.use("/api/v1/messages", messageRoutes);
   app.use("/api/v1/focus", focusRoutes);
   app.use("/api/v1/dashboard", dashboardRoutes);
