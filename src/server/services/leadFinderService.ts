@@ -139,16 +139,29 @@ async function serperSearch(query: string): Promise<SearchResult[]> {
 }
 
 async function enrich(url: string): Promise<Partial<Candidate>> {
-  if (!url || /^https?:\/\/(www\.)?(instagram|facebook|linkedin|google)\./i.test(url)) return {};
+  if (!url || /^https?:\\/\\/(www\\.)?(facebook|linkedin|google)\\./i.test(url)) return {};
+  if (/^https?:\\/\\/(www\\.)?instagram\\.com/i.test(url)) {
+    return isValidInstagramProfile(url) ? { instagram: url, companyName: cleanCompanyName(url.split("/").filter(Boolean).pop() || "", url) } : {};
+  }
+  if (isLikelyContentUrl(url)) return {};
   try {
     const response = await fetch(url, { headers: { "User-Agent": "DFQLABS-LeadFinder/1.0 (+https://dfqlabs.com.ng)" }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) return {};
     const html = await response.text();
-    const compact = html.replace(/<script[\\s\\S]*?<\/script>/gi, " ").replace(/<style[\\s\\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\\s+/g, " ").slice(0, 120000);
-    const instagram = html.match(/https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.-]+/i)?.[0];
-    const facebook = html.match(/https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9_.-]+/i)?.[0];
-    const linkedin = html.match(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.-]+/i)?.[0];
-    return { website: url, instagram, facebook, linkedin, email: extractEmail(compact), phone: extractPhone(compact), description: compact.slice(0, 900) };
+    const compact = html.replace(/<script[\\s\\S]*?<\\/script>/gi, " ").replace(/<style[\\s\\S]*?<\\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\\s+/g, " ").trim().slice(0, 120000);
+    const instagram = html.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/[A-Za-z0-9_.-]+/i)?.[0];
+    const facebook = html.match(/https?:\\/\\/(?:www\\.)?facebook\\.com\\/[A-Za-z0-9_.-]+/i)?.[0];
+    const linkedin = html.match(/https?:\\/\\/(?:www\\.)?linkedin\\.com\\/(?:company|in)\\/[A-Za-z0-9_.-]+/i)?.[0];
+    return {
+      website: url,
+      companyName: extractOrganizationName(html),
+      instagram: instagram && isValidInstagramProfile(instagram) ? instagram : undefined,
+      facebook,
+      linkedin,
+      email: extractEmail(compact),
+      phone: extractPhone(compact),
+      description: extractMeta(html, "description")?.slice(0, 500) || compact.slice(0, 500)
+    };
   } catch { return { website: url }; }
 }
 
@@ -284,6 +297,8 @@ export class LeadFinderService {
           if (created.length + candidates.length >= remaining) break;
           found++;
           if (!result.link || !result.title || !looksLikeCompanyResult(result.title, result.snippet || "", result.link)) { insufficient++; continue; }
+          if (isSocial(result.link, "instagram.com") && !isValidInstagramProfile(result.link)) { insufficient++; continue; }
+          if (!isSocial(result.link, "instagram.com") && isLikelyContentUrl(result.link)) { insufficient++; continue; }
           const url = result.link;
           const socialInstagram = isSocial(url, "instagram.com") ? url : undefined;
           const base = {
@@ -317,7 +332,8 @@ export class LeadFinderService {
         for (const candidate of enrichedCandidates) {
           if (created.length >= remaining) break;
           const { result, base, identifiers, url, enrichment } = candidate;
-          const merged = { ...base, ...enrichment };
+          const merged = { ...base, ...enrichment, companyName: enrichment.companyName || base.companyName };
+          if (!merged.companyName || /^(unknown|home|welcome|search|real estate company)$/i.test(merged.companyName.trim())) { rejected++; continue; }
           const enrichedIdentifiers = [
             merged.website ? domain(merged.website) : "",
             merged.instagram ? normalizeSocialIdentifier(merged.instagram) : "",
@@ -343,7 +359,7 @@ export class LeadFinderService {
           });
           const quality = qualityFor(scoreData.score);
           const outreachReady = scoreData.score >= settings.minimumScore &&
-            Boolean(merged.instagram || merged.website || merged.email || merged.phone);
+            Boolean(merged.phone);
           if (!outreachReady) { rejected++; continue; }
           qualified++;
           const lead = await PersistentProspectService.create({
