@@ -50,7 +50,7 @@ function AppContent() {
       case "/performance":
         return <PerformancePage />;
       case "/admin/dashboard":
-        return <AdminDashboardPage />;
+        return <AdminDashboardPage onNavigate={setCurrentPath} />;
       case "/admin/team":
         return <AdminTeamPage />;
       case "/admin/intelligence":
