@@ -1,92 +1,103 @@
 import React, { useEffect, useState } from "react";
-import { MissionControlMetrics } from "../../shared/types/index.js";
-import { Skeleton } from "../components/Skeleton.js";
 import { ApiClient } from "../services/api.js";
 
 export const AdminDashboardPage: React.FC<{ onNavigate?: (path: string) => void }> = ({ onNavigate }) => {
-  const [metrics, setMetrics] = useState<MissionControlMetrics | null>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    ApiClient.getMissionControl()
-      .then((res) => setMetrics(res.metrics))
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
+  const load = React.useCallback(() => {
+    setLoading(true);
+    return ApiClient.getCeoDashboard().then(setData).catch(() => undefined).finally(() => setLoading(false));
   }, []);
 
-  const value = (n?: number) => loading ? "—" : String(n ?? 0);
+  useEffect(() => { void load(); }, [load]);
+
+  const n = (value: any) => loading ? "—" : String(value ?? 0);
+  const pulse = data?.pulse || {};
+  const pipeline = data?.pipeline || {};
   const cards = [
-    { label: "Total Leads", value: value(metrics?.totalLeads), hint: "Every prospect in OS2", path: "/prospects", tone: "glacier" },
-    { label: "Uncontacted", value: value(metrics?.uncontactedLeads), hint: "Ready for first touch", path: "/prospects?stage=UNCONTACTED", tone: "amber" },
-    { label: "Contacted", value: value(metrics?.contactedLeads), hint: "Outbound already sent", path: "/prospects?stage=CONTACTED", tone: "blue" },
-    { label: "Inbound Replies", value: value(metrics?.repliedLeads), hint: "Conversations needing attention", path: "/conversations", tone: "green" }
+    ["Qualified Today", pulse.qualifiedToday, "of 30 target", "/lead-finder"],
+    ["Outreach Today", pulse.outreachToday, "messages sent", "/conversations"],
+    ["Reply Rate", pulse.replyRate7d, "% · 7 days", "/conversations"],
+    ["Positive", pulse.positive7d, "positive conversations", "/conversations"],
+    ["Meetings", pulse.meetings7d, "booked · 7 days", "/pipeline"],
+    ["Closed Won", pulse.closedWon7d, "wins · 7 days", "/pipeline"]
   ];
 
-  return (
-    <div className="mission-control">
-      <section className="mission-hero">
-        <div>
-          <div className="eyebrow">FOUNDER COMMAND</div>
-          <h1>See the business. Move the pipeline.</h1>
-          <p>Your command center for leads, conversations, team activity and revenue opportunities.</p>
-        </div>
-        <div className="mission-actions">
-          <button type="button" className="btn-primary" onClick={() => onNavigate?.("/prospects/new")}>+ Add Prospect</button>
-          <button type="button" className="btn-secondary" onClick={() => onNavigate?.("/pipeline")}>Open Pipeline</button>
-        </div>
-      </section>
+  const stages = [
+    ["Uncontacted", "UNCONTACTED"], ["Contacted", "CONTACTED"], ["Replied", "REPLIED"],
+    ["Audit / Qualified", "QUALIFIED"], ["Meeting", "MEETING_SCHEDULED"],
+    ["Proposal", "PROPOSAL_SENT"], ["Won", "CLOSED_WON"]
+  ];
 
-      <section className="dashboard-stats">
-        {cards.map((card) => (
-          <button key={card.label} className={`dashboard-stat ${card.tone}`} onClick={() => onNavigate?.(card.path)}>
-            <span className="stat-label">{card.label}</span>
-            <strong>{card.value}</strong>
-            <span className="stat-hint">{card.hint}</span>
-            <span className="stat-arrow">→</span>
-          </button>
-        ))}
-      </section>
+  return <div className="mission-control">
+    <section className="mission-hero">
+      <div>
+        <div className="eyebrow">DFQLABS / CEO COMMAND CENTER</div>
+        <h1>Know what is moving. Know what needs attention.</h1>
+        <p>The founder view is intentionally focused on acquisition, sales execution, pipeline movement and the few things that need your attention.</p>
+      </div>
+      <div className="mission-actions">
+        <button className="btn-primary" onClick={() => onNavigate?.("/lead-finder")}>Find Today’s 30</button>
+        <button className="btn-secondary" onClick={() => onNavigate?.("/pipeline")}>Open Pipeline</button>
+      </div>
+    </section>
 
-      <section className="command-grid">
-        <button className="command-card command-card-primary" onClick={() => onNavigate?.("/prospects")}>
-          <div className="command-card-icon">▤</div>
-          <div>
-            <div className="eyebrow">DATABASE</div>
-            <h2>Lead Directory</h2>
-            <p>Search, filter and open every prospect in the OS2 database.</p>
-          </div>
-          <span>View leads →</span>
+    <section className="dashboard-stats">
+      {cards.map(([label, value, hint, path]) => (
+        <button key={String(label)} className="dashboard-stat glacier" onClick={() => onNavigate?.(String(path))}>
+          <span className="stat-label">{label}</span>
+          <strong>{label === "Reply Rate" ? n(value) : n(value)}</strong>
+          <span className="stat-hint">{hint}</span>
         </button>
+      ))}
+    </section>
 
-        <button className="command-card" onClick={() => onNavigate?.("/pipeline")}>
-          <div className="command-card-icon">◫</div>
-          <div>
-            <div className="eyebrow">REVENUE</div>
-            <h2>Pipeline</h2>
-            <p>See prospects move from new outreach through reply, audit, meeting and close.</p>
-          </div>
-          <span>Open pipeline →</span>
-        </button>
-
-        <button className="command-card" onClick={() => onNavigate?.("/conversations")}>
-          <div className="command-card-icon">◌</div>
-          <div>
-            <div className="eyebrow">EXECUTION</div>
-            <h2>Conversations</h2>
-            <p>Review outbound messages, replies and the next action for each conversation.</p>
-          </div>
-          <span>Open conversations →</span>
-        </button>
-      </section>
-
-      <section className="card command-health">
-        <div>
-          <div className="eyebrow">SYSTEM STATUS</div>
-          <h2>OS2 is connected to its own operating environment.</h2>
-          {loading ? <Skeleton height="24px" /> : <p>Database-backed lead intelligence is active. The Founder view is now organized around the work you actually need to control: leads, pipeline, conversations and team execution.</p>}
+    <section className="card command-health">
+      <div>
+        <div className="eyebrow">PIPELINE HEALTH</div>
+        <h2>Where prospects are sitting right now.</h2>
+        <div className="finder-tags">
+          {stages.map(([label, key]) => <span key={key}>{label}: <strong>{n(pipeline[key])}</strong></span>)}
         </div>
-        <div className="health-pill"><i className="status-dot" /> ONLINE</div>
-      </section>
-    </div>
-  );
+      </div>
+    </section>
+
+    <section className="command-grid">
+      <div className="card">
+        <div className="eyebrow">SPECIALIST PERFORMANCE · 7 DAYS</div>
+        <h2>Who is moving the pipeline?</h2>
+        {loading ? <p>Loading performance…</p> : data?.specialists?.length ? (
+          <div className="finder-history-list">
+            {data.specialists.map((s:any) => <div className="finder-run-row" key={s.id}>
+              <span><strong>{s.name}</strong><br/><small>{s.status}</small></span>
+              <span>{s.outreach} outreach · {s.replies} replies · {s.positive} positive</span>
+              <span>{s.meetings} meetings · {s.won} won</span>
+            </div>)}
+          </div>
+        ) : <p>No outreach specialists configured.</p>}
+      </div>
+
+      <div className="card">
+        <div className="eyebrow">CEO ATTENTION</div>
+        <h2>What needs you?</h2>
+        {loading ? <p>Loading attention items…</p> : data?.attention?.length ? (
+          <div className="finder-history-list">
+            {data.attention.map((item:string, i:number) => <div className="finder-run-row" key={i}><strong>{item}</strong></div>)}
+          </div>
+        ) : <p>Nothing critical right now. Keep execution moving.</p>}
+      </div>
+    </section>
+
+    <section className="card command-health">
+      <div>
+        <div className="eyebrow">LEAD ACQUISITION</div>
+        <h2>Verified prospecting quality</h2>
+        <p>
+          {n(data?.acquisition?.found)} discovered · {n(data?.acquisition?.rejected)} rejected · {n(data?.acquisition?.duplicates)} duplicates · {n(data?.acquisition?.qualified)} qualified.
+        </p>
+      </div>
+      <button className="btn-secondary" onClick={() => onNavigate?.("/lead-finder")}>Open Lead Finder →</button>
+    </section>
+  </div>;
 };
