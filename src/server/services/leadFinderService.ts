@@ -264,7 +264,7 @@ async function inspectWebsite(url: string, companyName: string, location: string
     const titleOverlap = tokenOverlap(companyName, title);
     const domainOverlap = tokenOverlap(companyName, domainBrand(url));
     const locationMatch = normalize(compact).includes(normalize(location));
-    const realEstateMatch = realEstateEvidence(\`\${title} \${siteIdentity} \${compact.slice(0, 12000)}\`);
+    const realEstateMatch = realEstateEvidence(`${title} ${siteIdentity} ${compact.slice(0, 12000)}`);
     const signals: string[] = [];
     if (domainOverlap >= 0.34) signals.push("DOMAIN_BRAND_MATCH");
     if (nameOverlap >= 0.5) signals.push("STRUCTURED_NAME_MATCH");
@@ -301,8 +301,8 @@ async function resolveVerifiedWebsite(companyName: string, location: string): Pr
   const key = process.env.SERPER_API_KEY?.trim();
   if (!key) return null;
   const queries = [
-    \`"\${companyName}" "\${location}" Nigeria real estate official website\`,
-    \`"\${companyName}" "\${location}" Nigeria real estate\`
+    `"${companyName}" "${location}" Nigeria real estate official website`,
+    `"${companyName}" "${location}" Nigeria real estate`
   ];
   const results: SearchResult[] = [];
   for (const query of queries) {
@@ -317,8 +317,8 @@ async function resolveVerifiedWebsite(companyName: string, location: string): Pr
       score:
         tokenOverlap(companyName, r.title) * 45 +
         tokenOverlap(companyName, domainBrand(r.link)) * 30 +
-        (realEstateEvidence(\`\${r.title || ""} \${r.snippet || ""}\`) ? 15 : 0) +
-        (normalize(\`\${r.title || ""} \${r.snippet || ""}\`).includes(normalize(location)) ? 10 : 0)
+        (realEstateEvidence(`${r.title || ""} ${r.snippet || ""}`) ? 15 : 0) +
+        (normalize(`${r.title || ""} ${r.snippet || ""}`).includes(normalize(location)) ? 10 : 0)
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 4);
