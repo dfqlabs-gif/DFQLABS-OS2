@@ -57,8 +57,8 @@ ${recent}
 Return only the message text.`;
     const generated = await gemini(prompt);
     const fallback = history.some((m) => m.direction === "INBOUND")
-      ? `Thanks for getting back to us. Based on what you've shared, I can send over the complimentary strategic audit. Would you like me to proceed?`
-      : `Hi, just following up on my earlier message. I’d be happy to share the complimentary strategic audit if it would be useful. Would you like me to send the details?`;
+      ? `Thanks for getting back to us. Based on what you've shared, I can send over the free strategic audit. Would you like me to proceed?`
+      : `Hi, just following up on my earlier message. I’d be happy to share the free strategic audit if it would be useful. Would you like me to send the details?`;
     return { draftText: generated || fallback, evidenceUsed: [] };
   }
 }
