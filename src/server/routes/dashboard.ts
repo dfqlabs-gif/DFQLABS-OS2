@@ -8,5 +8,6 @@ const router = Router();
 router.use(authenticateUser);
 
 router.get("/mission-control", asyncHandler(DashboardController.missionControl));
+router.get("/ceo", asyncHandler(DashboardController.ceo));
 
 export default router;
