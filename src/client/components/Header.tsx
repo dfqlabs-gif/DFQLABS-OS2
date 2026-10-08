@@ -29,8 +29,8 @@ export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
           {activeRole}
         </span>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "13px", fontWeight: 600 }}>{user?.fullName ?? "Loading..."}</div>
-          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user?.email}</div>
+          <div style={{ fontSize: "13px", fontWeight: 600 }}>{activeRole === "FOUNDER" ? "CEO" : (user?.fullName ?? "Loading...")}</div>
+          {activeRole !== "FOUNDER" && <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user?.email}</div>}
         </div>
       </div>
     </header>
