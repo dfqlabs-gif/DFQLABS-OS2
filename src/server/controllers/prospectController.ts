@@ -86,6 +86,24 @@ export class ProspectController {
     });
   }
 
+  public static async update(req: Request, res: Response): Promise<void> {
+    if (!req.user || !PersistentProspectService.available()) {
+      res.status(503).json({ title: "Persistent database unavailable", status: 503 });
+      return;
+    }
+    const lead = await PersistentProspectService.update(req.params.id, req.body, req.user);
+    res.status(200).json({ lead });
+  }
+
+  public static async remove(req: Request, res: Response): Promise<void> {
+    if (!req.user || !PersistentProspectService.available()) {
+      res.status(503).json({ title: "Persistent database unavailable", status: 503 });
+      return;
+    }
+    await PersistentProspectService.delete(req.params.id, req.user);
+    res.status(204).send();
+  }
+
   public static async generateBriefing(req: Request, res: Response): Promise<void> {
     const lead = LeadService.getLeadById(req.params.id, req.user);
     if (!lead) {
