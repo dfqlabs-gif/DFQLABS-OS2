@@ -8,15 +8,34 @@ export const LeadFinderPage: React.FC = () => {
   const [running, setRunning] = React.useState(false);
   const [error, setError] = React.useState("");
   const [history, setHistory] = React.useState<any[]>([]);
+  const [progress, setProgress] = React.useState<any>(null);
   const refresh = React.useCallback(async () => {
     const [s,h] = await Promise.all([ApiClient.getLeadFinderSummary(), ApiClient.getLeadFinderHistory()]);
     setSummary(s); setHistory(h.runs || []);
   }, []);
   React.useEffect(() => { refresh().catch((e) => setError(e.message)); }, [refresh]);
+
+  React.useEffect(() => {
+    if (!running) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const h = await ApiClient.getLeadFinderHistory();
+        const active = (h.runs || []).find((r: any) => r.status === "RUNNING");
+        if (!cancelled && active) setProgress(active);
+      } catch { /* keep the active scan UI alive */ }
+    };
+    poll();
+    const timer = window.setInterval(poll, 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [running]);
   const run = async () => {
     setRunning(true); setError("");
-    try { await ApiClient.runLeadFinder(); await refresh(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Lead Finder failed."); }
+    try {
+      const result = await ApiClient.runLeadFinder();
+      setProgress(result?.lastRun || null);
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "Lead Finder failed."); }
     finally { setRunning(false); }
   };
   const pct = summary ? Math.min(100, Math.round((summary.newQualifiedToday / Math.max(1, summary.target)) * 100)) : 0;
@@ -24,6 +43,19 @@ export const LeadFinderPage: React.FC = () => {
     <div className="lead-finder-hero">
       <div><div className="eyebrow">DFQLABS / PROSPECTING INTELLIGENCE</div><h1>Find today’s next 30.</h1><p>Discover fresh Nigerian real-estate prospects, qualify them against the DFQLABS standard, and feed only outreach-ready companies into the canonical CRM.</p></div>
       <button className="btn-primary lead-finder-run" onClick={run} disabled={running}>{running ? "Scanning the market…" : "✦ Find Today’s 30"}</button>
+      {running && progress && (
+        <div className="lead-finder-live-progress">
+          <div className="live-progress-head">
+            <strong>{progress.stats?.statusMessage || "Scanning the market…"}</strong>
+            <span>{progress.stats?.created || 0} / {progress.target || 30} qualified</span>
+          </div>
+          <div className="finder-track"><span style={{width: `${Math.min(100, Math.round(((progress.stats?.created || 0) / Math.max(1, progress.target || 30)) * 100))}%`}} /></div>
+          <div className="finder-meta">
+            <span>Queries {progress.stats?.providerQueries || 0} / {progress.stats?.queriesTotal || "…"}</span>
+            <span>Found {progress.stats?.found || 0} · Rejected {progress.stats?.rejected || 0} · Duplicates {progress.stats?.duplicate || 0}</span>
+          </div>
+        </div>
+      )}
     </div>
     {error && <div className="lead-finder-error">{error}</div>}
     <div className="lead-finder-progress card">
