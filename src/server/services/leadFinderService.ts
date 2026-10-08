@@ -417,8 +417,20 @@ export class LeadFinderService {
     if (remaining === 0) return { ...summary, created: [], message: "Today's qualified prospect target is already met." };
 
     const today = new Date().toISOString().slice(0, 10);
-    const { data: running } = await db.from("lead_finder_runs").select("id").eq("run_date", today).eq("status", "RUNNING").limit(1).maybeSingle();
-    if (running) throw new Error("A Lead Finder run is already in progress.");
+    const { data: running } = await db.from("lead_finder_runs").select("id,created_at").eq("run_date", today).eq("status", "RUNNING").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (running) {
+      const ageMs = Date.now() - new Date(running.created_at).getTime();
+      const staleAfterMs = 10 * 60 * 1000;
+      if (ageMs > staleAfterMs) {
+        await db.from("lead_finder_runs").update({
+          status: "FAILED",
+          completed_at: new Date().toISOString(),
+          stats: { recovery: "STALE_RUN_AUTO_RECOVERED", staleAfterMinutes: 10 }
+        }).eq("id", running.id).eq("status", "RUNNING");
+      } else {
+        throw new Error("A Lead Finder run is already in progress.");
+      }
+    }
 
     const { data: run, error: runError } = await db.from("lead_finder_runs").insert({
       run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id,
@@ -597,6 +609,8 @@ export class LeadFinderService {
 
     try {
       for (const plan of sourceQueries) {
+        const { data: currentRun } = await db.from("lead_finder_runs").select("status").eq("id", run.id).maybeSingle();
+        if (currentRun?.status === "CANCELLED") break;
         if (created.length >= remaining) break;
         providerQueries++;
 
@@ -642,6 +656,10 @@ export class LeadFinderService {
         }).eq("id", run.id);
       }
 
+      const { data: finalRunState } = await db.from("lead_finder_runs").select("status").eq("id", run.id).maybeSingle();
+      if (finalRunState?.status === "CANCELLED") {
+        return { ...(await this.getTodaySummary(user)), created, runId: run.id, message: "Lead Finder run cancelled." };
+      }
       const status = created.length >= remaining ? "COMPLETED" : "PARTIAL";
       await db.from("lead_finder_runs").update({
         status,
@@ -713,6 +731,22 @@ export class LeadFinderService {
     for (const row of contacts || []) if (row.normalized_value) identifiers.add(normalize(row.normalized_value));
     for (const row of socials || []) if (row.normalized_identifier) identifiers.add(normalize(row.normalized_identifier));
     return identifiers;
+  }
+
+  static async cancelRun(user: User) {
+    if (user.role !== "FOUNDER") throw new Error("Founder access required.");
+    const db = getSupabaseClient();
+    if (!db) throw new Error("Database is not configured.");
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: running } = await db.from("lead_finder_runs").select("id").eq("run_date", today).eq("status", "RUNNING").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (!running) return { cancelled: false, message: "No active Lead Finder run." };
+    const { error } = await db.from("lead_finder_runs").update({
+      status: "CANCELLED",
+      completed_at: new Date().toISOString(),
+      stats: { cancellation: "FOUNDER_CANCELLED" }
+    }).eq("id", running.id).eq("status", "RUNNING");
+    if (error) throw new Error(error.message);
+    return { cancelled: true, runId: running.id };
   }
 
   static async resetToday(user: User) {
