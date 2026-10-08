@@ -17,8 +17,8 @@ export const AdminDashboardPage: React.FC<{ onNavigate?: (path: string) => void 
   const value = (n?: number) => loading ? "—" : String(n ?? 0);
   const cards = [
     { label: "Total Leads", value: value(metrics?.totalLeads), hint: "Every prospect in OS2", path: "/prospects", tone: "glacier" },
-    { label: "Uncontacted", value: value(metrics?.uncontactedLeads), hint: "Ready for first touch", path: "/prospects", tone: "amber" },
-    { label: "Contacted", value: value(metrics?.contactedLeads), hint: "Outbound already sent", path: "/prospects", tone: "blue" },
+    { label: "Uncontacted", value: value(metrics?.uncontactedLeads), hint: "Ready for first touch", path: "/prospects?stage=UNCONTACTED", tone: "amber" },
+    { label: "Contacted", value: value(metrics?.contactedLeads), hint: "Outbound already sent", path: "/prospects?stage=CONTACTED", tone: "blue" },
     { label: "Inbound Replies", value: value(metrics?.repliedLeads), hint: "Conversations needing attention", path: "/conversations", tone: "green" }
   ];
 
