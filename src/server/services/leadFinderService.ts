@@ -226,7 +226,7 @@ export class LeadFinderService {
           const socialInstagram = isSocial(url, "instagram.com") ? url : undefined;
           const base = {
             companyName: cleanCompanyName(result.title, url),
-            location: settings.locations.find((l) => normalize((result.title||"")+" "+(result.snippet||"")).includes(normalize(l))) || "Nigeria",
+            location: settings.locations.find((l: string) => normalize((result.title||"")+" "+(result.snippet||"")).includes(normalize(l))) || "Nigeria",
             description: result.snippet || "",
             sourceUrl: url,
             source: "SERPER"
