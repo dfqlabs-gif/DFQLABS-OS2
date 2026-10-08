@@ -271,31 +271,42 @@ export class LeadFinderService {
           if (providerQueries === 1) throw error;
           continue;
         }
+        const candidates: Array<{ result: SearchResult; base: any; identifiers: string[]; url: string }> = [];
         for (const result of results) {
-          if (created.length >= remaining) break;
+          if (created.length + candidates.length >= remaining) break;
           found++;
           if (!result.link || !result.title) { insufficient++; continue; }
           const url = result.link;
-          const urlDomain = domain(url);
-          const socialInstagram = isSocial(url, "instagram.com") ? url : undefined;
           const base = {
             companyName: cleanCompanyName(result.title, url),
-            location: settings.locations.find((l: string) => normalize((result.title||"")+" "+(result.snippet||"")).includes(normalize(l))) || "Nigeria",
+            location: settings.locations.find((l: string) => normalize((result.title || "") + " " + (result.snippet || "")).includes(normalize(l))) || "Nigeria",
             description: result.snippet || "",
             sourceUrl: url,
             source: "SERPER"
           };
-          const candidateIdentifiers = [
+          const identifiers = [
             normalize(base.companyName),
-            urlDomain,
-            socialInstagram ? normalizeSocialIdentifier(socialInstagram) : "",
+            domain(url),
+            isSocial(url, "instagram.com") ? normalizeSocialIdentifier(url) : "",
           ].filter(Boolean);
-          if (candidateIdentifiers.some((identifier) => seen.has(identifier) || existing.has(identifier))) {
+          if (identifiers.some((identifier) => seen.has(identifier) || existing.has(identifier))) {
             duplicate++;
             continue;
           }
+          for (const identifier of identifiers) seen.add(identifier);
+          candidates.push({ result, base, identifiers, url });
+        }
 
-          const enrichment = await enrich(url);
+        const enrichedCandidates = await Promise.all(
+          candidates.map(async (candidate) => ({
+            ...candidate,
+            enrichment: await enrich(candidate.url)
+          }))
+        );
+
+        for (const candidate of enrichedCandidates) {
+          if (created.length >= remaining) break;
+          const { result, base, identifiers, url, enrichment } = candidate;
           const merged = { ...base, ...enrichment };
           const enrichedIdentifiers = [
             merged.website ? domain(merged.website) : "",
@@ -306,19 +317,14 @@ export class LeadFinderService {
             merged.phone ? normalize(merged.phone) : "",
           ].filter(Boolean);
 
-          // The candidate's own URL/domain/social handle may reappear during
-          // enrichment. Only reject identifiers that collide with another
-          // candidate or an existing CRM record.
-          const baseIdentifierSet = new Set(candidateIdentifiers);
+          const baseIdentifierSet = new Set(identifiers);
           if (enrichedIdentifiers.some((identifier) =>
             !baseIdentifierSet.has(identifier) && (existing.has(identifier) || seen.has(identifier))
           )) {
             duplicate++;
             continue;
           }
-          for (const identifier of [...candidateIdentifiers, ...enrichedIdentifiers]) {
-            seen.add(identifier);
-          }
+          for (const identifier of enrichedIdentifiers) seen.add(identifier);
 
           const scoreData = scoreCandidate({
             title: result.title || "", snippet: result.snippet || "", url,
@@ -326,7 +332,8 @@ export class LeadFinderService {
             website: merged.website, instagram: merged.instagram, email: merged.email, phone: merged.phone
           });
           const quality = qualityFor(scoreData.score);
-          const outreachReady = scoreData.score >= settings.minimumScore && Boolean(merged.instagram || merged.website || merged.email || merged.phone);
+          const outreachReady = scoreData.score >= settings.minimumScore &&
+            Boolean(merged.instagram || merged.website || merged.email || merged.phone);
           if (!outreachReady) { rejected++; continue; }
           qualified++;
           const lead = await PersistentProspectService.create({
