@@ -49,6 +49,21 @@ function socialId(value?: string): string {
   return value.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "").split("?")[0];
 }
 
+function cleanDiscoveryText(value?: string): string {
+  if (!value) return "";
+  const cleaned = value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\\s+/g, " ")
+    .trim();
+  if (!cleaned || /(<|>|\\b)(table|tbody|thead|tr|td|script|style)(\\b|>)/i.test(value)) return "";
+  if (/\\b(study|research|survey|article|blog|news|directory|report|jobs|vacancy|pdf)\\b/i.test(cleaned) && cleaned.length > 240) return "";
+  return cleaned.slice(0, 500);
+}
+
 function extractEmail(text: string): string | undefined {
   return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
 }
@@ -141,7 +156,7 @@ async function serperSearch(query: string): Promise<SearchResult[]> {
 async function enrich(url: string): Promise<Partial<Candidate>> {
   if (!url || /^https?:\\/\\/(www\\.)?(facebook|linkedin|google)\\./i.test(url)) return {};
   if (/^https?:\\/\\/(www\\.)?instagram\\.com/i.test(url)) {
-    return isValidInstagramProfile(url) ? { instagram: url, companyName: cleanCompanyName(url.split("/").filter(Boolean).pop() || "", url) } : {};
+    return isValidInstagramProfile(url) ? { instagram: url } : {};
   }
   if (isLikelyContentUrl(url)) return {};
   try {
@@ -326,7 +341,7 @@ export class LeadFinderService {
           const base = {
             companyName: cleanCompanyName(result.title, url),
             location: settings.locations.find((l: string) => normalize((result.title || "") + " " + (result.snippet || "")).includes(normalize(l))) || "Nigeria",
-            description: result.snippet || "",
+            description: cleanDiscoveryText(result.snippet),
             sourceUrl: url,
             source: "SERPER",
             ...(socialInstagram ? { instagram: socialInstagram } : {})
