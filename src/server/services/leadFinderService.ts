@@ -134,7 +134,7 @@ function scoreCandidate(input: { title: string; snippet: string; url: string; lo
   return { score, breakdown };
 }
 
-async function serperSearch(query: string): Promise<SearchResult[]> {
+async function serperSearch(query: string, num = 10): Promise<SearchResult[]> {
   const key = process.env.SERPER_API_KEY?.trim();
   if (!key) {
     throw new Error("Lead Finder search is not configured on the server. Add SERPER_API_KEY to the production environment.");
@@ -145,7 +145,7 @@ async function serperSearch(query: string): Promise<SearchResult[]> {
     response = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: { "X-API-KEY": key, "Content-Type": "application/json" },
-      body: JSON.stringify({ q: query, gl: "ng", hl: "en", num: 10 }),
+      body: JSON.stringify({ q: query, gl: "ng", hl: "en", num: Math.max(1, Math.min(20, num)) }),
       signal: AbortSignal.timeout(15000)
     });
   } catch (error) {
@@ -191,37 +191,6 @@ function isSocial(url: string, host: string) {
 }
 
 
-
-async function googlePlacesSearch(textQuery: string, includedType?: string): Promise<Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; types?: string[] }>> {
-  const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
-  if (!key) throw new Error("Lead Finder discovery is not configured on the server. Add GOOGLE_PLACES_API_KEY to the production environment.");
-  const body: Record<string, unknown> = { textQuery, pageSize: 20, regionCode: "NG", languageCode: "en" };
-  if (includedType) { body.includedType = includedType; body.strictTypeFiltering = true; }
-
-  let response: Response;
-  try {
-    response = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.types"
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000)
-    });
-  } catch (error) {
-    throw new Error(\`Google Places discovery is unreachable: \${error instanceof Error ? error.message : String(error)}\`);
-  }
-
-  const raw = await response.text();
-  let json: { places?: Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; types?: string[] }>; error?: { message?: string } } = {};
-  try { json = raw ? JSON.parse(raw) : {}; } catch { json = {}; }
-  if (!response.ok) {
-    throw new Error(\`Google Places discovery failed with HTTP \${response.status}\${json.error?.message ? \`: \${json.error.message}\` : ""}\`);
-  }
-  return Array.isArray(json.places) ? json.places : [];
-}
 
 function tokenOverlap(a?: string, b?: string): number {
   const left = new Set(normalize(a).split(" ").filter((x) => x.length >= 3));
@@ -425,8 +394,13 @@ export class LeadFinderService {
     const db = getSupabaseClient();
     if (!db) throw new Error("Database is not configured.");
     const settings = await this.getSettings();
-    if (!process.env.GOOGLE_PLACES_API_KEY?.trim()) throw new Error("Lead Finder discovery is not configured on the server. Add GOOGLE_PLACES_API_KEY to the production environment.");
-    if (!process.env.SERPER_API_KEY?.trim()) throw new Error("Lead Finder enrichment is not configured on the server. Add SERPER_API_KEY to the production environment.");
+
+    // Google Places is deliberately optional. The free-first engine works with
+    // Serper alone and uses multiple public source families (websites, Instagram,
+    // LinkedIn and Nigerian business directories) before considering any paid provider.
+    if (!process.env.SERPER_API_KEY?.trim()) {
+      throw new Error("Lead Finder discovery is not configured on the server. Add SERPER_API_KEY to the production environment.");
+    }
 
     const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
     const summary = await this.getTodaySummary(user);
@@ -439,124 +413,196 @@ export class LeadFinderService {
 
     const { data: run, error: runError } = await db.from("lead_finder_runs").insert({
       run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id,
-      stats: { target, remainingBeforeRun: remaining, discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER" }
+      stats: { target, remainingBeforeRun: remaining, discoveryProvider: "SERPER_MULTI_SOURCE", enrichmentProvider: "DIRECT_WEBSITE" }
     }).select("*").single();
     if (runError || !run) throw new Error(runError?.message || "Unable to start Lead Finder run.");
 
-    const queryPlan = settings.locations.flatMap((location) => [
-      { query: \`real estate agencies in \${location}, Nigeria\`, includedType: "real_estate_agency" },
-      { query: \`real estate developers and property companies in \${location}, Nigeria\` }
+    const sourceQueries = settings.locations.flatMap((location) => [
+      {
+        sourceFamily: "INSTAGRAM",
+        query: `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR developer) -jobs -news -article -directory`
+      },
+      {
+        sourceFamily: "LINKEDIN",
+        query: `site:linkedin.com/company "${location}" Nigeria ("real estate" OR property OR developer OR realtor)`
+      },
+      {
+        sourceFamily: "DIRECTORY",
+        query: `"${location}" Nigeria real estate company developer realtor properties -jobs -news -article -directory -listing`
+      }
     ]);
 
     const existing = await this.existingIdentifiers();
     const seen = new Set<string>();
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
+    let verificationSearches = 0;
+    const MAX_VERIFICATION_SEARCHES = Math.max(20, remaining * 2);
+
+    const addCandidate = async (result: SearchResult, sourceFamily: string, location: string) => {
+      const rawTitle = result.title?.trim() || "";
+      const rawUrl = result.link?.trim() || "";
+      const rawSnippet = cleanDiscoveryText(result.snippet);
+      if (!rawTitle || !rawUrl || !looksLikeCompanyResult(rawTitle, rawSnippet, rawUrl)) {
+        rejected++;
+        return;
+      }
+
+      const companyName = cleanCompanyName(rawTitle, rawUrl);
+      const companyKey = normalize(companyName);
+      if (!companyKey || existing.has(companyKey) || seen.has(companyKey)) {
+        duplicate++;
+        return;
+      }
+      seen.add(companyKey);
+      found++;
+
+      let verified: Awaited<ReturnType<typeof inspectWebsite>> | null = null;
+
+      // If the result is already an apparent company website, inspect it directly.
+      // This is both cheaper and safer than trusting the search-result title.
+      if (!isSocial(rawUrl, "instagram.com") && !isSocial(rawUrl, "facebook.com") && !isSocial(rawUrl, "linkedin.com") && !listingLikeUrl(rawUrl)) {
+        verified = await inspectWebsite(rawUrl, companyName, location);
+      }
+
+      // Social pages/directories are discovery sources, not identity authorities.
+      // Resolve them to a matching official website before a lead can be accepted.
+      if (!verified && verificationSearches < MAX_VERIFICATION_SEARCHES) {
+        verificationSearches++;
+        verified = await resolveVerifiedWebsite(companyName, location);
+      }
+
+      if (!verified || !verified.phone || verified.confidence < 75) {
+        rejected++;
+        return;
+      }
+
+      const strongIdentitySignals = verified.signals.filter((signal) =>
+        ["DOMAIN_BRAND_MATCH", "STRUCTURED_NAME_MATCH", "PAGE_TITLE_MATCH", "INSTAGRAM_HANDLE_MATCH"].includes(signal)
+      );
+      if (strongIdentitySignals.length < 2) {
+        rejected++;
+        return;
+      }
+
+      const phone = normalizeNigeriaPhone(verified.phone);
+      if (!phone) {
+        rejected++;
+        return;
+      }
+
+      const identifiers = [
+        phone,
+        verified.website ? domain(verified.website) : "",
+        verified.instagram ? normalizeSocialIdentifier(verified.instagram) : ""
+      ].filter(Boolean);
+
+      if (identifiers.some((id) => existing.has(normalize(id)) || seen.has(normalize(id)))) {
+        duplicate++;
+        return;
+      }
+      identifiers.forEach((id) => seen.add(normalize(id)));
+
+      const scoreData = scoreCandidate({
+        title: companyName,
+        snippet: verified.description || rawSnippet,
+        url: verified.website || rawUrl,
+        location,
+        industry: settings.industries[0] || "real estate",
+        website: verified.website,
+        instagram: verified.instagram,
+        email: verified.email,
+        phone
+      });
+      const quality = qualityFor(scoreData.score);
+      if (scoreData.score < settings.minimumScore) {
+        rejected++;
+        return;
+      }
+
+      const lead = await PersistentProspectService.create({
+        companyName,
+        businessType: "REAL ESTATE",
+        location,
+        description: verified.description || `Verified ${sourceFamily.toLowerCase()} discovery for ${companyName}.`,
+        phone,
+        // Never equate a phone number with WhatsApp. WhatsApp availability is
+        // unknown unless explicitly verified through an approved user-driven flow.
+        email: verified.email,
+        instagram: verified.instagram,
+        website: verified.website,
+        source: "LEAD_FINDER_SERPER",
+        clientType: "AUTOMATED_DISCOVERY",
+        serviceTier: quality
+      }, user);
+
+      const evidence = {
+        discoverySourceFamily: sourceFamily,
+        discoveryUrl: rawUrl,
+        discoveryTitle: rawTitle,
+        discoverySnippet: rawSnippet || null,
+        website: verified.website || null,
+        identityConfidence: verified.confidence,
+        identitySignals: verified.signals,
+        enrichmentEvidence: verified.evidence,
+        verificationMethod: "OFFICIAL_WEBSITE_IDENTITY_RESOLUTION"
+      };
+
+      const { error: updateError } = await db.from("leads").update({
+        discovery_score: scoreData.score,
+        discovery_quality: quality,
+        discovery_source: "SERPER_MULTI_SOURCE",
+        discovery_provider: "SERPER",
+        discovery_place_id: null,
+        identity_confidence: verified.confidence,
+        identity_signals: verified.signals,
+        discovery_evidence: evidence,
+        discovery_run_id: run.id,
+        outreach_ready: true,
+        updated_at: new Date().toISOString()
+      }).eq("id", lead.id);
+
+      if (updateError) {
+        throw new Error(`Lead Finder saved the prospect but could not persist verification evidence: ${updateError.message}`);
+      }
+
+      qualified++;
+      created.push({
+        companyName,
+        location,
+        description: verified.description || "",
+        website: verified.website,
+        instagram: verified.instagram,
+        facebook: verified.facebook,
+        linkedin: verified.linkedin,
+        email: verified.email,
+        phone,
+        sourceUrl: rawUrl,
+        source: "SERPER_MULTI_SOURCE",
+        score: scoreData.score,
+        quality,
+        outreachReady: true,
+        breakdown: scoreData.breakdown
+      });
+    };
 
     try {
-      for (const plan of queryPlan) {
+      for (const plan of sourceQueries) {
         if (created.length >= remaining) break;
         providerQueries++;
-        let places: Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; types?: string[] }> = [];
-        try { places = await googlePlacesSearch(plan.query, plan.includedType); }
-        catch (error) { if (providerQueries === 1) throw error; continue; }
 
-        for (const place of places) {
+        let results: SearchResult[] = [];
+        try {
+          results = await serperSearch(plan.query, 10);
+        } catch (error) {
+          if (providerQueries === 1) throw error;
+          continue;
+        }
+
+        const location = settings.locations.find((value) => plan.query.includes(`"${value}"`)) || settings.locations[0];
+        for (const result of results) {
           if (created.length >= remaining) break;
-          found++;
-          const companyName = place.displayName?.text?.trim();
-          if (!companyName || !place.id) { insufficient++; continue; }
-
-          const location = settings.locations.find((l) => normalize(place.formattedAddress).includes(normalize(l)))
-            || plan.query.split(",")[0].replace(/^real estate agencies? in /i, "").replace(/^real estate developers and property companies in /i, "").trim();
-          const googleTypes = Array.isArray(place.types) ? place.types : [];
-          if (!realEstateEvidence(\`\${companyName} \${googleTypes.join(" ")}\`)) { rejected++; continue; }
-
-          const companyKey = normalize(companyName);
-          if (existing.has(companyKey) || seen.has(companyKey)) { duplicate++; continue; }
-          seen.add(companyKey);
-
-          const verified = await resolveVerifiedWebsite(companyName, location);
-          if (!verified || !verified.phone || verified.confidence < 75 || verified.signals.filter((s) => ["DOMAIN_BRAND_MATCH","STRUCTURED_NAME_MATCH","PAGE_TITLE_MATCH","INSTAGRAM_HANDLE_MATCH"].includes(s)).length < 2) {
-            rejected++;
-            continue;
-          }
-
-          const phone = normalizeNigeriaPhone(verified.phone);
-          if (!phone) { rejected++; continue; }
-
-          const identifiers = [
-            phone,
-            verified.website ? domain(verified.website) : "",
-            verified.instagram ? normalizeSocialIdentifier(verified.instagram) : ""
-          ].filter(Boolean);
-          if (identifiers.some((id) => existing.has(normalize(id)) || seen.has(normalize(id)))) { duplicate++; continue; }
-          identifiers.forEach((id) => seen.add(normalize(id)));
-
-          const scoreData = scoreCandidate({
-            title: companyName,
-            snippet: verified.description || "",
-            url: verified.website || "",
-            location,
-            industry: settings.industries[0] || "real estate",
-            website: verified.website,
-            instagram: verified.instagram,
-            email: verified.email,
-            phone,
-            googleTypes
-          });
-          const quality = qualityFor(scoreData.score);
-          if (scoreData.score < settings.minimumScore) { rejected++; continue; }
-
-          const lead = await PersistentProspectService.create({
-            companyName,
-            businessType: "REAL ESTATE",
-            location,
-            description: verified.description || \`Verified Google business discovery for \${companyName}.\`,
-            phone,
-            whatsapp: phone,
-            email: verified.email,
-            instagram: verified.instagram,
-            website: verified.website,
-            source: "LEAD_FINDER_GOOGLE_PLACES",
-            clientType: "AUTOMATED_DISCOVERY",
-            serviceTier: quality
-          }, user);
-
-          const evidence = {
-            googlePlaceId: place.id,
-            googleName: companyName,
-            googleAddress: place.formattedAddress || null,
-            googleTypes,
-            website: verified.website || null,
-            identityConfidence: verified.confidence,
-            identitySignals: verified.signals,
-            enrichmentEvidence: verified.evidence
-          };
-
-          const { error: updateError } = await db.from("leads").update({
-            discovery_score: scoreData.score,
-            discovery_quality: quality,
-            discovery_source: "GOOGLE_PLACES",
-            discovery_provider: "GOOGLE_PLACES",
-            discovery_place_id: place.id,
-            identity_confidence: verified.confidence,
-            identity_signals: verified.signals,
-            discovery_evidence: evidence,
-            discovery_run_id: run.id,
-            outreach_ready: true,
-            updated_at: new Date().toISOString()
-          }).eq("id", lead.id);
-          if (updateError) throw new Error(\`Lead Finder saved the prospect but could not persist verification evidence: \${updateError.message}\`);
-
-          qualified++;
-          created.push({
-            companyName, location, description: verified.description || "",
-            website: verified.website, instagram: verified.instagram, facebook: verified.facebook,
-            linkedin: verified.linkedin, email: verified.email, phone, sourceUrl: verified.website,
-            source: "GOOGLE_PLACES", score: scoreData.score, quality,
-            outreachReady: true, breakdown: scoreData.breakdown
-          });
+          await addCandidate(result, plan.sourceFamily, location);
         }
 
         await db.from("lead_finder_runs").update({
@@ -567,37 +613,84 @@ export class LeadFinderService {
           rejected_count: rejected,
           insufficient_count: insufficient,
           stats: {
-            target, remainingBeforeRun: remaining, queriesTotal: queryPlan.length, providerQueries,
-            found, qualified, duplicate, rejected, insufficient, created: created.length,
-            discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER",
-            statusMessage: created.length >= remaining ? "Target reached. Finalizing verified prospects…" : \`Google discovery pass \${providerQueries} of \${queryPlan.length}\`
+            target,
+            remainingBeforeRun: remaining,
+            queriesTotal: sourceQueries.length,
+            providerQueries,
+            found,
+            qualified,
+            duplicate,
+            rejected,
+            insufficient,
+            created: created.length,
+            verificationSearches,
+            discoveryProvider: "SERPER_MULTI_SOURCE",
+            sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
+            statusMessage: created.length >= remaining
+              ? "Target reached. Finalizing verified prospects…"
+              : `Free-first discovery pass ${providerQueries} of ${sourceQueries.length}`
           }
         }).eq("id", run.id);
       }
 
       const status = created.length >= remaining ? "COMPLETED" : "PARTIAL";
       await db.from("lead_finder_runs").update({
-        status, found_count: found, qualified_count: qualified, duplicate_count: duplicate,
-        rejected_count: rejected, insufficient_count: insufficient, provider_queries: providerQueries,
+        status,
+        found_count: found,
+        qualified_count: qualified,
+        duplicate_count: duplicate,
+        rejected_count: rejected,
+        insufficient_count: insufficient,
+        provider_queries: providerQueries,
         stats: {
-          target, remainingBeforeRun: remaining, created: created.length, locations: settings.locations,
-          industries: settings.industries, discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER"
+          target,
+          remainingBeforeRun: remaining,
+          created: created.length,
+          locations: settings.locations,
+          industries: settings.industries,
+          discoveryProvider: "SERPER_MULTI_SOURCE",
+          sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
+          verificationSearches
         },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
 
       const final = await this.getTodaySummary(user);
-      return { ...final, created, runId: run.id, stats: { found, qualified, duplicate, rejected, insufficient, providerQueries } };
+      return {
+        ...final,
+        created,
+        runId: run.id,
+        stats: {
+          found,
+          qualified,
+          duplicate,
+          rejected,
+          insufficient,
+          providerQueries,
+          verificationSearches,
+          sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"]
+        }
+      };
     } catch (error) {
       await db.from("lead_finder_runs").update({
-        status: "FAILED", found_count: found, qualified_count: qualified, duplicate_count: duplicate,
-        rejected_count: rejected, insufficient_count: insufficient, provider_queries: providerQueries,
-        stats: { error: error instanceof Error ? error.message : String(error), discoveryProvider: "GOOGLE_PLACES", enrichmentProvider: "SERPER" },
+        status: "FAILED",
+        found_count: found,
+        qualified_count: qualified,
+        duplicate_count: duplicate,
+        rejected_count: rejected,
+        insufficient_count: insufficient,
+        provider_queries: providerQueries,
+        stats: {
+          error: error instanceof Error ? error.message : String(error),
+          discoveryProvider: "SERPER_MULTI_SOURCE",
+          verificationSearches
+        },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
       throw error;
     }
   }
+
   private static async existingIdentifiers(): Promise<Set<string>> {
     const db = getSupabaseClient();
     const identifiers = new Set<string>();
@@ -621,7 +714,7 @@ export class LeadFinderService {
     const end = new Date(start); end.setDate(end.getDate() + 1);
     const { data: leads, error: fetchError } = await db.from("leads")
       .select("id")
-      .in("source", ["LEAD_FINDER_SERPER", "LEAD_FINDER_GOOGLE_PLACES"])
+      .in("source", ["LEAD_FINDER_SERPER", "LEAD_FINDER_GOOGLE_PLACES", "LEAD_FINDER_OSM"])
       .gte("created_at", start.toISOString())
       .lt("created_at", end.toISOString());
     if (fetchError) throw new Error(fetchError.message);
