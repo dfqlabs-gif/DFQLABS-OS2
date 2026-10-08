@@ -1,11 +1,20 @@
 import { getSupabaseClient } from "../config/supabase.js";
 import { PersistentProspectService } from "./persistentProspectService.js";
+import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
 import { User } from "../../shared/types/index.js";
 
 const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
 const DEFAULT_INDUSTRIES = ["real estate developer", "luxury realtor", "real estate agency", "property investment company"];
 
 type SearchResult = { title?: string; link?: string; snippet?: string };
+interface LeadFinderSettings {
+  dailyTarget: number;
+  minimumScore: number;
+  locations: string[];
+  industries: string[];
+  preferredContact: string;
+}
+
 type Candidate = {
   companyName: string;
   location: string;
@@ -117,18 +126,18 @@ function isSocial(url: string, host: string) {
 
 export class LeadFinderService {
   private static readonly SETTINGS_ID = "00000000-0000-0000-0000-000000000030";
-  static async getSettings() {
+  static async getSettings(): Promise<LeadFinderSettings> {
     const db = getSupabaseClient();
-    const fallback = { dailyTarget: 30, minimumScore: 70, locations: DEFAULT_LOCATIONS, industries: DEFAULT_INDUSTRIES, preferredContact: "WHATSAPP" };
+    const fallback: LeadFinderSettings = { dailyTarget: 30, minimumScore: 70, locations: DEFAULT_LOCATIONS, industries: DEFAULT_INDUSTRIES, preferredContact: "WHATSAPP" };
     if (!db) return fallback;
     const { data } = await db.from("lead_finder_settings").select("*").eq("id", this.SETTINGS_ID).maybeSingle();
     if (!data) return fallback;
     return {
       dailyTarget: data.daily_target,
       minimumScore: data.minimum_score,
-      locations: Array.isArray(data.locations) ? data.locations : DEFAULT_LOCATIONS,
-      industries: Array.isArray(data.industries) ? data.industries : DEFAULT_INDUSTRIES,
-      preferredContact: data.preferred_contact
+      locations: Array.isArray(data.locations) ? data.locations.filter((value): value is string => typeof value === "string") : DEFAULT_LOCATIONS,
+      industries: Array.isArray(data.industries) ? data.industries.filter((value): value is string => typeof value === "string") : DEFAULT_INDUSTRIES,
+      preferredContact: typeof data.preferred_contact === "string" ? data.preferred_contact : fallback.preferredContact
     };
   }
 
@@ -149,7 +158,9 @@ export class LeadFinderService {
     };
     const { data, error } = await db.from("lead_finder_settings").upsert(next).select("*").single();
     if (error || !data) throw new Error(error?.message || "Unable to save Lead Finder settings.");
-    return { dailyTarget: data.daily_target, minimumScore: data.minimum_score, locations: data.locations, industries: data.industries, preferredContact: data.preferred_contact };
+    return { dailyTarget: data.daily_target, minimumScore: data.minimum_score, locations: Array.isArray(data.locations) ? data.locations.filter((value): value is string => typeof value === "string") : DEFAULT_LOCATIONS,
+      industries: Array.isArray(data.industries) ? data.industries.filter((value): value is string => typeof value === "string") : DEFAULT_INDUSTRIES,
+      preferredContact: typeof data.preferred_contact === "string" ? data.preferred_contact : current.preferredContact };
   }
 
   static async getTodaySummary(user: User) {
@@ -158,7 +169,7 @@ export class LeadFinderService {
     if (!db) return { ...settings, target: settings.dailyTarget, newQualifiedToday: 0, remaining: settings.dailyTarget, status: "NOT_CONFIGURED", lastRun: null };
     const start = new Date(); start.setHours(0,0,0,0);
     const end = new Date(start); end.setDate(end.getDate()+1);
-    let q = db.from("leads").select("id,discovery_score,outreach_ready,created_at,owner_user_id").eq("outreach_ready", true).gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+    let q = db.from("leads").select("id,discovery_score,outreach_ready,created_at,owner_user_id,discovery_run_id").eq("outreach_ready", true).not("discovery_run_id", "is", null).gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
     if (user.role !== "FOUNDER") q = q.eq("owner_user_id", user.id);
     const { data: leads } = await q;
     const { data: runs } = await db.from("lead_finder_runs").select("*").order("created_at",{ascending:false}).limit(5);
@@ -215,17 +226,38 @@ export class LeadFinderService {
           const socialInstagram = isSocial(url, "instagram.com") ? url : undefined;
           const base = {
             companyName: cleanCompanyName(result.title, url),
-            location: settings.locations.find((l) => normalize((result.title||"")+" "+(result.snippet||"")).includes(normalize(l))) || "Nigeria",
+            location: settings.locations.find((l: string) => normalize((result.title||"")+" "+(result.snippet||"")).includes(normalize(l))) || "Nigeria",
             description: result.snippet || "",
             sourceUrl: url,
             source: "SERPER"
           };
-          const identity = [normalize(base.companyName), urlDomain, socialId(socialInstagram)].filter(Boolean).join("|");
-          if (seen.has(identity) || [...existing].some((x) => x && identity.includes(x))) { duplicate++; continue; }
-          seen.add(identity);
+          const candidateIdentifiers = [
+            normalize(base.companyName),
+            urlDomain,
+            socialInstagram ? normalizeSocialIdentifier(socialInstagram) : "",
+          ].filter(Boolean);
+          if (candidateIdentifiers.some((identifier) => seen.has(identifier) || existing.has(identifier))) {
+            duplicate++;
+            continue;
+          }
+          for (const identifier of candidateIdentifiers) seen.add(identifier);
 
           const enrichment = await enrich(url);
           const merged = { ...base, ...enrichment };
+          const enrichedIdentifiers = [
+            merged.website ? domain(merged.website) : "",
+            merged.instagram ? normalizeSocialIdentifier(merged.instagram) : "",
+            merged.facebook ? normalizeSocialIdentifier(merged.facebook) : "",
+            merged.linkedin ? normalizeSocialIdentifier(merged.linkedin) : "",
+            merged.email ? normalize(merged.email) : "",
+            merged.phone ? normalize(merged.phone) : "",
+          ].filter(Boolean);
+          if (enrichedIdentifiers.some((identifier) => existing.has(identifier) || seen.has(identifier))) {
+            duplicate++;
+            continue;
+          }
+          for (const identifier of enrichedIdentifiers) seen.add(identifier);
+
           const scoreData = scoreCandidate({
             title: result.title || "", snippet: result.snippet || "", url,
             location: base.location, industry: settings.industries[0],
