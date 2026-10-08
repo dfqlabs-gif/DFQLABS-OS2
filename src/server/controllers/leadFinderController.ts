@@ -23,6 +23,7 @@ export class LeadFinderController {
     });
   }
 
+  static async cancel(req: Request, res: Response) { res.json(await LeadFinderService.cancelRun(req.user!)); }
   static async history(req: Request, res: Response) { res.json({ runs: await LeadFinderService.getHistory(Number(req.query.limit || 20)) }); }
   static async reset(req: Request, res: Response) { res.json(await LeadFinderService.resetToday(req.user!)); }
 }
