@@ -32,6 +32,7 @@ export class DashboardController {
       messagesRes,
       outcomesRes,
       usersRes,
+      conversationsRes,
       runsRes,
       pendingFollowupsRes
     ] = await Promise.all([
@@ -39,16 +40,19 @@ export class DashboardController {
       db.from("messages").select("id,sender_user_id,direction,status,sent_at,created_at").gte("created_at", sevenDaysAgo),
       db.from("outcomes").select("lead_id,recorded_by_user_id,outcome_type,created_at").gte("created_at", sevenDaysAgo),
       db.from("users").select("id,full_name,role,is_active").eq("role", "OUTREACH_SPECIALIST"),
+      db.from("conversations").select("id,lead_id"),
       db.from("lead_finder_runs").select("found_count,rejected_count,duplicate_count,qualified_count,status,created_at").gte("created_at", todayStart).order("created_at", { ascending: false }).limit(10),
       db.from("follow_ups").select("id,lead_id,assigned_user_id,due_at,status").eq("status", "PENDING").lt("due_at", now.toISOString())
     ]);
 
-    for (const result of [leadsRes, messagesRes, outcomesRes, usersRes, runsRes, pendingFollowupsRes]) {
+    for (const result of [leadsRes, messagesRes, outcomesRes, usersRes, conversationsRes, runsRes, pendingFollowupsRes]) {
       if (result.error) throw new Error(`Unable to load CEO dashboard: ${result.error.message}`);
     }
 
     const leads = leadsRes.data || [];
     const messages = messagesRes.data || [];
+    const conversations = conversationsRes.data || [];
+    const conversationLead = new Map((conversations as any[]).map((x: any) => [x.id, x.lead_id]));
     const outcomes = outcomesRes.data || [];
     const users = usersRes.data || [];
     const runs = runsRes.data || [];
@@ -67,7 +71,8 @@ export class DashboardController {
     const specialists = users.map((u: any) => {
       const userOutreach = outbound7d.filter((m: any) => m.sender_user_id === u.id).length;
       const userReplies = inbound7d.filter((m: any) => {
-        const lead = leads.find((l: any) => l.id === (messages.find((om: any) => om.id === m.id)?.lead_id));
+        const leadId = conversationLead.get(m.conversation_id);
+        const lead = leads.find((l: any) => l.id === leadId);
         return Boolean(lead && lead.owner_user_id === u.id);
       }).length;
       const userPositive = positive.filter((o: any) => o.recorded_by_user_id === u.id).length;
