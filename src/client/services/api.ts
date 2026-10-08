@@ -159,6 +159,10 @@ export class ApiClient {
     return this.request("/api/v1/dashboard/mission-control");
   }
 
+  public static getCeoDashboard(): Promise<any> {
+    return this.request("/api/v1/dashboard/ceo");
+  }
+
   public static recordOutcome(payload: { leadId: string; outcomeType: string; notes?: string }): Promise<{ outcome: Outcome }> {
     return this.request("/api/v1/outcomes", {
       method: "POST",
