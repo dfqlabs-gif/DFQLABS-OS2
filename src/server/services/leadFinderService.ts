@@ -610,7 +610,7 @@ export class LeadFinderService {
     try {
       for (const plan of sourceQueries) {
         const { data: currentRun } = await db.from("lead_finder_runs").select("status").eq("id", run.id).maybeSingle();
-        if (currentRun?.status === "CANCELLED") break;
+        if (currentRun?.status && currentRun.status !== "RUNNING") break;
         if (created.length >= remaining) break;
         providerQueries++;
 
@@ -657,8 +657,8 @@ export class LeadFinderService {
       }
 
       const { data: finalRunState } = await db.from("lead_finder_runs").select("status").eq("id", run.id).maybeSingle();
-      if (finalRunState?.status === "CANCELLED") {
-        return { ...(await this.getTodaySummary(user)), created, runId: run.id, message: "Lead Finder run cancelled." };
+      if (finalRunState?.status && finalRunState.status !== "RUNNING") {
+        return { ...(await this.getTodaySummary(user)), created, runId: run.id, message: "Lead Finder run stopped by Founder." };
       }
       const status = created.length >= remaining ? "COMPLETED" : "PARTIAL";
       await db.from("lead_finder_runs").update({
@@ -741,9 +741,9 @@ export class LeadFinderService {
     const { data: running } = await db.from("lead_finder_runs").select("id").eq("run_date", today).eq("status", "RUNNING").order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (!running) return { cancelled: false, message: "No active Lead Finder run." };
     const { error } = await db.from("lead_finder_runs").update({
-      status: "CANCELLED",
+      status: "FAILED",
       completed_at: new Date().toISOString(),
-      stats: { cancellation: "FOUNDER_CANCELLED" }
+      stats: { cancellation: "FOUNDER_CANCELLED", statusMessage: "Stopped by Founder." }
     }).eq("id", running.id).eq("status", "RUNNING");
     if (error) throw new Error(error.message);
     return { cancelled: true, runId: running.id };
