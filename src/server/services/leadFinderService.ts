@@ -74,10 +74,14 @@ function extractPhone(text: string): string | undefined {
 }
 
 function looksLikeCompanyResult(title: string, snippet: string, url: string): boolean {
-  const text = normalize(`${title} ${snippet} ${url}`);
+  const titleText = normalize(title);
+  const text = normalize([title, snippet, url].join(" "));
   const contentOnly = /\b(study|research|survey|article|blog|why|how to|near me|find real estate|top \d+|list of|directory|report|news|guide|market trends|jobs|vacancy|pdf)\b/i;
-  if (contentOnly.test(text)) return false;
-  return /\b(real estate|realty|realtor|property|properties|developer|developers|development|homes|housing|estate|investment|holdings|group)\b/i.test(text);
+  const listingLike = /\b(plots?|units?|apartments?|houses?|homes?|properties?)\s+(for sale|available|at|on|near)|\b(for sale|for rent|renting|listing|price per plot|sqm|square metres?)\b/i;
+  const titleEntitySignal = /\b(developer|developers|realty|realtor|real estate|property|properties|homes|housing|estate|investment|investments|holdings|group|groups|company|limited|ltd|agency|agencies)\b/i;
+  if (contentOnly.test(text) || listingLike.test(text)) return false;
+  if (isSocial(url, "instagram.com")) return isValidInstagramProfile(url) && titleEntitySignal.test(titleText);
+  return titleEntitySignal.test(titleText) && /\b(real estate|realty|realtor|property|properties|developer|developers|development|homes|housing|estate|investment|holdings|group|agency)\b/i.test(text);
 }
 
 function cleanCompanyName(title: string, url: string): string {
