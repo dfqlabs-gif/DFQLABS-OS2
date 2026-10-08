@@ -32,8 +32,11 @@ export class ApiClient {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ title: "API Error", status: res.status }));
-      throw new Error(err.detail || err.title || `Request failed with status ${res.status}`);
+      const raw = await res.text().catch(() => "");
+      let err: { detail?: string; title?: string; message?: string; status?: number } = {};
+      try { err = raw ? JSON.parse(raw) : {}; } catch { /* non-JSON response */ }
+      const detail = err.detail || err.message || err.title || raw || `Request failed with status ${res.status}`;
+      throw new Error(detail);
     }
 
     return res.json();
