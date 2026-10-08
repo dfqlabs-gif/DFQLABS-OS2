@@ -55,7 +55,7 @@ function extractEmail(text: string): string | undefined {
 
 function normalizeNigeriaPhone(value?: string): string | undefined {
   if (!value) return undefined;
-  const digits = value.replace(/\\D/g, "");
+  const digits = value.replace(/\D/g, "");
   if (digits.length === 13 && digits.startsWith("234")) return `+${digits}`;
   if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`;
   if (digits.length === 10) return `+234${digits}`;
