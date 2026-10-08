@@ -57,10 +57,10 @@ function cleanDiscoveryText(value?: string): string {
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned || /(<|>|\\b)(table|tbody|thead|tr|td|script|style)(\\b|>)/i.test(value)) return "";
-  if (/\\b(study|research|survey|article|blog|news|directory|report|jobs|vacancy|pdf)\\b/i.test(cleaned) && cleaned.length > 240) return "";
+  if (!cleaned || /(<|>|\b)(table|tbody|thead|tr|td|script|style)(\b|>)/i.test(value)) return "";
+  if (/\b(study|research|survey|article|blog|news|directory|report|jobs|vacancy|pdf)\b/i.test(cleaned) && cleaned.length > 240) return "";
   return cleaned.slice(0, 500);
 }
 
@@ -158,8 +158,8 @@ async function serperSearch(query: string): Promise<SearchResult[]> {
 }
 
 async function enrich(url: string): Promise<Partial<Candidate>> {
-  if (!url || /^https?:\\/\\/(www\\.)?(facebook|linkedin|google)\\./i.test(url)) return {};
-  if (/^https?:\\/\\/(www\\.)?instagram\\.com/i.test(url)) {
+  if (!url || /^https?:\/\/(www\.)?(facebook|linkedin|google)\./i.test(url)) return {};
+  if (/^https?:\/\/(www\.)?instagram\.com/i.test(url)) {
     return isValidInstagramProfile(url) ? { instagram: url } : {};
   }
   if (isLikelyContentUrl(url)) return {};
@@ -167,10 +167,10 @@ async function enrich(url: string): Promise<Partial<Candidate>> {
     const response = await fetch(url, { headers: { "User-Agent": "DFQLABS-LeadFinder/1.0 (+https://dfqlabs.com.ng)" }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) return {};
     const html = await response.text();
-    const compact = html.replace(/<script[\\s\\S]*?<\\/script>/gi, " ").replace(/<style[\\s\\S]*?<\\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\\s+/g, " ").trim().slice(0, 120000);
-    const instagram = html.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/[A-Za-z0-9_.-]+/i)?.[0];
-    const facebook = html.match(/https?:\\/\\/(?:www\\.)?facebook\\.com\\/[A-Za-z0-9_.-]+/i)?.[0];
-    const linkedin = html.match(/https?:\\/\\/(?:www\\.)?linkedin\\.com\\/(?:company|in)\\/[A-Za-z0-9_.-]+/i)?.[0];
+    const compact = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120000);
+    const instagram = html.match(/https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.-]+/i)?.[0];
+    const facebook = html.match(/https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9_.-]+/i)?.[0];
+    const linkedin = html.match(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.-]+/i)?.[0];
     return {
       website: url,
       companyName: extractOrganizationName(html),
