@@ -42,7 +42,13 @@ export const LeadFinderPage: React.FC = () => {
   return <section className="lead-finder-page">
     <div className="lead-finder-hero">
       <div><div className="eyebrow">DFQLABS / PROSPECTING INTELLIGENCE</div><h1>Find today’s next 30.</h1><p>Discover fresh Nigerian real-estate prospects, qualify them against the DFQLABS standard, and feed only outreach-ready companies into the canonical CRM.</p></div>
-      <button className="btn-primary lead-finder-run" onClick={run} disabled={running}>{running ? "Scanning the market…" : "✦ Find Today’s 30"}</button>
+      <div className="lead-finder-actions">
+        <button className="btn-primary lead-finder-run" onClick={run} disabled={running}>{running ? "Scanning the market…" : "✦ Find Today’s 30"}</button>
+        {activeRole === "FOUNDER" && <button className="btn-secondary" onClick={async () => {
+          if (!window.confirm("Reset today’s Lead Finder batch? This removes only today’s automated Lead Finder prospects and run history.")) return;
+          try { setError(""); await ApiClient.resetLeadFinderToday(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "Reset failed."); }
+        }} disabled={running}>Reset Today</button>}
+      </div>
       {running && progress && (
         <div className="lead-finder-live-progress">
           <div className="live-progress-head">
