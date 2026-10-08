@@ -251,6 +251,54 @@ export class PersistentProspectService {
     );
   }
 
+  static async update(id: string, input: Partial<{
+    companyName: string; contactName: string; titleRole: string; businessType: string; location: string;
+    phone: string; whatsapp: string; email: string; instagram: string; website: string; description: string;
+    clientType: string; serviceTier: string;
+  }>, user: User): Promise<Lead> {
+    const db = getSupabaseClient(); if (!db) throw new Error("Database is not configured");
+    const existing = await this.getById(id, user);
+    if (!existing) throw new Error("Lead not found");
+    const now = new Date().toISOString();
+    const leadPatch: Record<string, unknown> = { updated_at: now };
+    const map: Record<string, string> = {
+      companyName: "company_name", contactName: "contact_name", titleRole: "title_role", businessType: "business_type",
+      location: "location", description: "description", clientType: "client_type", serviceTier: "service_tier"
+    };
+    for (const [key, column] of Object.entries(map)) if (input[key as keyof typeof input] !== undefined) leadPatch[column] = input[key as keyof typeof input];
+    const { data: row, error } = await db.from("leads").update(leadPatch).eq("id", id).select("*").single();
+    if (error || !row) throw new Error(error?.message || "Unable to update lead");
+
+    if (input.phone !== undefined || input.whatsapp !== undefined || input.email !== undefined) {
+      await db.from("lead_contacts").delete().eq("lead_id", id);
+      const contacts: InsertContact[] = [];
+      if (input.phone) contacts.push({ lead_id: id, contact_type: "PHONE", raw_value: input.phone, normalized_value: normalizePhone(input.phone), is_primary: true });
+      if (input.whatsapp) contacts.push({ lead_id: id, contact_type: "WHATSAPP", raw_value: input.whatsapp, normalized_value: normalizePhone(input.whatsapp), is_primary: !input.phone });
+      if (input.email) contacts.push({ lead_id: id, contact_type: "EMAIL", raw_value: input.email, normalized_value: input.email.trim().toLowerCase(), is_primary: false });
+      if (contacts.length) { const { error: e } = await db.from("lead_contacts").insert(contacts); if (e) throw new Error(e.message); }
+    }
+
+    if (input.instagram !== undefined || input.website !== undefined) {
+      await db.from("lead_social_profiles").delete().eq("lead_id", id);
+      const socials: InsertSocial[] = [];
+      if (input.instagram) socials.push({ lead_id: id, platform: "INSTAGRAM", handle_or_url: input.instagram, normalized_identifier: normalizeSocialIdentifier(input.instagram) });
+      if (input.website) socials.push({ lead_id: id, platform: "WEBSITE", handle_or_url: input.website, normalized_identifier: normalizeSocialIdentifier(input.website) });
+      if (socials.length) { const { error: e } = await db.from("lead_social_profiles").insert(socials); if (e) throw new Error(e.message); }
+    }
+    const refreshed = await this.getById(id, user);
+    if (!refreshed) throw new Error("Lead updated but could not be reloaded");
+    EventService.logEvent({ eventType: "LEAD_CREATED", leadId: id, actorUserId: user.id, payload: { action: "PROFILE_UPDATED" } });
+    return refreshed.lead;
+  }
+
+  static async delete(id: string, user: User): Promise<void> {
+    const db = getSupabaseClient(); if (!db) throw new Error("Database is not configured");
+    const existing = await this.getById(id, user);
+    if (!existing) throw new Error("Lead not found");
+    const { error } = await db.from("leads").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
   static async generateFirstTouch(leadId: string, user: User): Promise<Message> {
     const detail = await this.getById(leadId, user);
     if (!detail) throw new Error("Lead not found");
