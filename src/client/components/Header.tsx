@@ -1,4 +1,5 @@
 import React from "react";
+import { Search, Command } from "lucide-react";
 import { useAuth } from "../context/AuthContext.js";
 
 interface HeaderProps {
@@ -14,8 +15,8 @@ export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
       <div className="header-left">
         <h1 className="page-title">{title}</h1>
         <button className="command-trigger-btn" onClick={onOpenCommand}>
-          <span>🔍 Quick Search</span>
-          <span className="kbd-shortcut">⌘K</span>
+          <span className="header-search-label"><Search size={15} strokeWidth={1.8} /> Quick Search</span>
+          <span className="kbd-shortcut"><Command size={11} /> K</span>
         </button>
       </div>
 
