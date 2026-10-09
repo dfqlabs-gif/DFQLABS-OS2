@@ -10,6 +10,7 @@ export const LeadFinderPage: React.FC = () => {
   const [error, setError] = React.useState("");
   const [history, setHistory] = React.useState<any[]>([]);
   const [progress, setProgress] = React.useState<any>(null);
+  const [scanAcceptedAt, setScanAcceptedAt] = React.useState<number | null>(null);
 
   const refresh = React.useCallback(async () => {
     const [s, h] = await Promise.all([
@@ -46,8 +47,39 @@ export const LeadFinderPage: React.FC = () => {
         setProgress(active);
 
         if (!active) {
+          // The API responds as soon as it accepts the job, but runDaily first
+          // awaits database/settings calls before inserting the RUNNING row.
+          // Treating one empty poll as completion made the button turn off after
+          // ~2–3 seconds, allowing repeated clicks and duplicate start attempts.
+          const acceptedAt = scanAcceptedAt;
+          const recentRun = acceptedAt === null ? null : runs.find((r: any) =>
+            r.created_at && new Date(r.created_at).getTime() >= acceptedAt
+          );
+          if (recentRun && recentRun.status !== "RUNNING") {
+            setRunning(false);
+            setScanAcceptedAt(null);
+            await refresh();
+            return;
+          }
+          if (acceptedAt !== null && Date.now() - acceptedAt < 90_000) {
+            setProgress({
+              status: "RUNNING",
+              target: summary?.target || 30,
+              stats: { statusMessage: "Scan accepted. Waiting for the server to initialise the run…" }
+            });
+            return;
+          }
+          if (acceptedAt !== null) {
+            setRunning(false);
+            setScanAcceptedAt(null);
+            setError("The server accepted the scan request, but no active run appeared within 90 seconds. Check the latest run status and Render logs before trying again.");
+            await refresh();
+            return;
+          }
           setRunning(false);
           await refresh();
+        } else {
+          setScanAcceptedAt(null);
         }
       } catch {
         // Keep the active scan UI alive through transient polling failures.
@@ -60,7 +92,7 @@ export const LeadFinderPage: React.FC = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [running, starting, refresh]);
+  }, [running, starting, refresh, scanAcceptedAt, summary?.target]);
 
   const run = async () => {
     // Catch every awaited operation, including the preflight refresh. Previously
@@ -86,11 +118,15 @@ export const LeadFinderPage: React.FC = () => {
       if (result?.accepted === false) {
         throw new Error(result?.message || "The server did not accept the Lead Finder run.");
       }
+      setScanAcceptedAt(Date.now());
       setProgress(result?.lastRun || { status: "RUNNING", target: summary?.target || 30, stats: { statusMessage: result?.message || "Scan accepted. Connecting to live progress…" } });
       setRunning(true);
-      await refresh();
+      // Do not immediately refresh: runDaily performs asynchronous preflight work
+      // before it inserts the RUNNING row. Polling now has a 90-second startup
+      // grace period and will attach as soon as the persisted row appears.
     } catch (e) {
       setRunning(false);
+      setScanAcceptedAt(null);
       setError(e instanceof Error ? e.message : "Lead Finder could not start. Check the connection and try again.");
       await refresh().catch(() => undefined);
     } finally {
