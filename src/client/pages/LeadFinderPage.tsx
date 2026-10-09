@@ -189,6 +189,17 @@ export const LeadFinderPage: React.FC = () => {
           <span>Verification searches: {latestRun.stats?.verificationSearches ?? "Not recorded"}</span>
           <span>Result: {latestRun.status}</span>
         </div>
+        {latestRun.stats?.sourceStats && <div className="finder-history-list source-yield-list">
+          <strong>Source performance</strong>
+          {Object.entries(latestRun.stats.sourceStats as Record<string, {queries:number; candidates:number; qualified:number}>).map(([source, stats]) =>
+            <div className="finder-run-row" key={source}>
+              <span className="run-date">{source.replaceAll("_", " ")}</span>
+              <span>{stats.queries} searches</span>
+              <span>{stats.candidates} candidates</span>
+              <strong>{stats.qualified} qualified</strong>
+            </div>
+          )}
+        </div>}
       </section>
     )}
 
