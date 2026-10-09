@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { BrainCircuit, ChevronRight, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Plus, Search, Sparkles, Target, TrendingUp, Users, Workflow } from "lucide-react";
 import { useAuth } from "../context/AuthContext.js";
 
 interface SidebarProps {
@@ -11,22 +12,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
   const [collapsed, setCollapsed] = useState(false);
 
   const specialistNav = [
-    { path: "/focus", label: "Today’s Focus", icon: "◉" },
-    { path: "/lead-finder", label: "Lead Finder", icon: "✦" },
-    { path: "/prospects", label: "My Leads", icon: "▤" },
-    { path: "/prospects/new", label: "Add Prospect", icon: "+" },
-    { path: "/conversations", label: "Conversations", icon: "◌" },
-    { path: "/performance", label: "My Performance", icon: "↗" }
+    { path: "/focus", label: "Today’s Focus", icon: Target },
+    { path: "/lead-finder", label: "Lead Finder", icon: Search },
+    { path: "/prospects", label: "My Leads", icon: Users },
+    { path: "/prospects/new", label: "Add Prospect", icon: Plus },
+    { path: "/conversations", label: "Conversations", icon: MessageCircle },
+    { path: "/performance", label: "My Performance", icon: TrendingUp }
   ];
 
   const founderNav = [
-    { path: "/admin/dashboard", label: "CEO Dashboard", icon: "◆" },
+    { path: "/admin/dashboard", label: "CEO Dashboard", icon: LayoutDashboard },
     { path: "/lead-finder", label: "Lead Finder", icon: "✦" },
     { path: "/prospects", label: "Lead Directory", icon: "▤" },
-    { path: "/pipeline", label: "Pipeline", icon: "◫" },
+    { path: "/pipeline", label: "Pipeline", icon: Workflow },
     { path: "/conversations", label: "Conversations", icon: "◌" },
-    { path: "/admin/team", label: "Team & Seats", icon: "♙" },
-    { path: "/admin/intelligence", label: "Learning Intelligence", icon: "✦" }
+    { path: "/admin/team", label: "Team & Seats", icon: Users },
+    { path: "/admin/intelligence", label: "Learning Intelligence", icon: BrainCircuit }
   ];
 
   const navItems = activeRole === "FOUNDER" ? founderNav : specialistNav;
@@ -52,7 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
             title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             style={{ padding: "4px 8px", fontSize: "12px" }}
           >
-            {collapsed ? "→" : "‹"}
+            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
         </div>
 
@@ -64,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
               onClick={() => onNavigate(item.path)}
               title={item.label}
             >
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon"><item.icon size={17} strokeWidth={1.8} /></span>
               {!collapsed && <span>{item.label}</span>}
             </button>
           ))}
