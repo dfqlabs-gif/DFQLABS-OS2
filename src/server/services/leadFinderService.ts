@@ -108,6 +108,7 @@ function isGenericCompanyName(value: string): boolean {
     .replace(/[|–—-]/g, " ")
     .replace(/\b(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin city|akwa ibom)\b/g, " ")
     .replace(/\b(limited|ltd|plc|nigeria)\b/g, " ")
+    .replace(/\bin\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!name || name.length < 4) return true;
@@ -488,6 +489,10 @@ export class LeadFinderService {
 
     const existing = await this.existingIdentifiers();
     const seen = new Set<string>();
+    const sourceStats: Record<string, { queries: number; candidates: number; qualified: number }> = {};
+    for (const item of sourceQueries) {
+      if (!sourceStats[item.sourceFamily]) sourceStats[item.sourceFamily] = { queries: 0, candidates: 0, qualified: 0 };
+    }
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
     let verificationSearches = 0;
@@ -525,6 +530,7 @@ export class LeadFinderService {
       // weak directory result must not suppress a later authoritative result
       // for the same company from LinkedIn, Instagram, or its official website.
       found++;
+      sourceStats[sourceFamily].candidates++;
 
       let verified: Awaited<ReturnType<typeof inspectWebsite>> | null = null;
 
@@ -651,6 +657,7 @@ export class LeadFinderService {
       }
 
       qualified++;
+      sourceStats[sourceFamily].qualified++;
       created.push({
         companyName,
         location,
@@ -677,6 +684,7 @@ export class LeadFinderService {
         if (created.length >= remaining) break;
         if (providerQueries >= MAX_DISCOVERY_QUERIES || found >= MAX_DISCOVERY_RESULTS) break;
         providerQueries++;
+        sourceStats[plan.sourceFamily].queries++;
 
         let results: SearchResult[] = [];
         try {
@@ -714,6 +722,7 @@ export class LeadFinderService {
             created: created.length,
             verificationSearches,
             rejectionReasons: { ...rejectionReasons },
+            sourceStats: { ...sourceStats },
             discoveryProvider: "SERPER_MULTI_SOURCE",
             sourceFamilies: [...new Set(sourceQueries.map((item) => item.sourceFamily))],
             statusMessage: created.length >= remaining
@@ -746,6 +755,7 @@ export class LeadFinderService {
           sourceFamilies: [...new Set(sourceQueries.map((item) => item.sourceFamily))],
           verificationSearches,
           rejectionReasons: { ...rejectionReasons },
+          sourceStats: { ...sourceStats },
           discoveryBudget: { maxQueries: MAX_DISCOVERY_QUERIES, maxResults: MAX_DISCOVERY_RESULTS, queriesUsed: providerQueries, resultsFound: found },
           statusMessage: created.length >= remaining
             ? "Target reached."
@@ -785,7 +795,8 @@ export class LeadFinderService {
           error: error instanceof Error ? error.message : String(error),
           discoveryProvider: "SERPER_MULTI_SOURCE",
           verificationSearches,
-          rejectionReasons: { ...rejectionReasons }
+          rejectionReasons: { ...rejectionReasons },
+          sourceStats: { ...sourceStats }
         },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
