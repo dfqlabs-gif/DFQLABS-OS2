@@ -83,6 +83,43 @@ export const LeadFinderPage: React.FC = () => {
     }
   };
 
+  // Keep the phone awake only while a scan is actively running. On mobile
+  // browsers, turning the display off can suspend polling; if the host is an
+  // idle/sleeping web service, that can interrupt a long background run.
+  React.useEffect(() => {
+    if (!running) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    let disposed = false;
+    const requestWakeLock = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const wakeLockApi = (navigator as Navigator & {
+          wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> }
+        }).wakeLock;
+        if (!wakeLockApi || lock) return;
+        lock = await wakeLockApi.request("screen");
+        if (disposed && lock) {
+          await lock.release().catch(() => undefined);
+          lock = null;
+        }
+        if (lock) {
+          lock.addEventListener?.("release", () => { lock = null; });
+        }
+      } catch {
+        // Unsupported browsers or power-saving policies may deny wake locks.
+      }
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === "visible") void requestWakeLock(); };
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (lock) void lock.release().catch(() => undefined);
+      lock = null;
+    };
+  }, [running]);
+
   const latestRun = history[0] || null;
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
 
