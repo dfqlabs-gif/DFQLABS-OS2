@@ -461,6 +461,11 @@ export class LeadFinderService {
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
     let verificationSearches = 0;
+    const rejectionReasons: Record<string, number> = {
+      invalidSearchResult: 0, officialWebsiteNotVerified: 0, weakIdentityMatch: 0,
+      invalidNigeriaPhone: 0, duplicateIdentity: 0, belowMinimumScore: 0, persistenceError: 0
+    };
+    const bumpRejection = (reason: string) => { rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1; rejected++; };
     const MAX_DISCOVERY_QUERIES = Math.min(90, Math.max(30, remaining * 3));
     const MAX_DISCOVERY_RESULTS = Math.max(300, remaining * 20);
     const VERIFICATION_CONCURRENCY = 4;
@@ -472,7 +477,7 @@ export class LeadFinderService {
       const rawUrl = result.link?.trim() || "";
       const rawSnippet = cleanDiscoveryText(result.snippet);
       if (!rawTitle || !rawUrl || !looksLikeCompanyResult(rawTitle, rawSnippet, rawUrl)) {
-        rejected++;
+        bumpRejection("invalidSearchResult");
         return;
       }
 
@@ -501,7 +506,7 @@ export class LeadFinderService {
       }
 
       if (!verified || !verified.phone || verified.confidence < 75) {
-        rejected++;
+        bumpRejection("officialWebsiteNotVerified");
         return;
       }
 
@@ -509,13 +514,13 @@ export class LeadFinderService {
         ["DOMAIN_BRAND_MATCH", "STRUCTURED_NAME_MATCH", "PAGE_TITLE_MATCH", "INSTAGRAM_HANDLE_MATCH"].includes(signal)
       );
       if (strongIdentitySignals.length < 2) {
-        rejected++;
+        bumpRejection("weakIdentityMatch");
         return;
       }
 
       const phone = normalizeNigeriaPhone(verified.phone);
       if (!phone) {
-        rejected++;
+        bumpRejection("invalidNigeriaPhone");
         return;
       }
 
@@ -527,6 +532,7 @@ export class LeadFinderService {
 
       if (identifiers.some((id) => existing.has(normalize(id)) || seen.has(normalize(id)))) {
         duplicate++;
+        rejectionReasons.duplicateIdentity++;
         return;
       }
       identifiers.forEach((id) => seen.add(normalize(id)));
@@ -544,11 +550,13 @@ export class LeadFinderService {
       });
       const quality = qualityFor(scoreData.score);
       if (scoreData.score < settings.minimumScore) {
-        rejected++;
+        bumpRejection("belowMinimumScore");
         return;
       }
 
-      const lead = await PersistentProspectService.create({
+      let lead: Awaited<ReturnType<typeof PersistentProspectService.create>>;
+      try {
+        lead = await PersistentProspectService.create({
         companyName,
         businessType: "REAL ESTATE",
         location,
@@ -562,7 +570,14 @@ export class LeadFinderService {
         source: "LEAD_FINDER_SERPER",
         clientType: "AUTOMATED_DISCOVERY",
         serviceTier: quality
-      }, user);
+        }, user);
+      } catch (error) {
+        bumpRejection("persistenceError");
+        console.error("[Lead Finder] Qualified prospect could not be saved", {
+          companyName, location, error: error instanceof Error ? error.message : String(error)
+        });
+        return;
+      }
 
       const evidence = {
         discoverySourceFamily: sourceFamily,
@@ -591,7 +606,11 @@ export class LeadFinderService {
       }).eq("id", lead.id);
 
       if (updateError) {
-        throw new Error(`Lead Finder saved the prospect but could not persist verification evidence: ${updateError.message}`);
+        rejectionReasons.persistenceError++;
+        console.error("[Lead Finder] Prospect saved but discovery evidence update failed", {
+          leadId: lead.id, companyName, error: updateError.message
+        });
+        // Keep the successfully created canonical lead even if enrichment metadata fails.
       }
 
       qualified++;
@@ -657,6 +676,7 @@ export class LeadFinderService {
             insufficient,
             created: created.length,
             verificationSearches,
+            rejectionReasons: { ...rejectionReasons },
             discoveryProvider: "SERPER_MULTI_SOURCE",
             sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
             statusMessage: created.length >= remaining
@@ -688,6 +708,7 @@ export class LeadFinderService {
           discoveryProvider: "SERPER_MULTI_SOURCE",
           sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
           verificationSearches,
+          rejectionReasons: { ...rejectionReasons },
           discoveryBudget: { maxQueries: MAX_DISCOVERY_QUERIES, maxResults: MAX_DISCOVERY_RESULTS, queriesUsed: providerQueries, resultsFound: found },
           statusMessage: created.length >= remaining
             ? "Target reached."
@@ -726,7 +747,8 @@ export class LeadFinderService {
         stats: {
           error: error instanceof Error ? error.message : String(error),
           discoveryProvider: "SERPER_MULTI_SOURCE",
-          verificationSearches
+          verificationSearches,
+          rejectionReasons: { ...rejectionReasons }
         },
         completed_at: new Date().toISOString()
       }).eq("id", run.id);
