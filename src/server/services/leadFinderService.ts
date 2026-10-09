@@ -44,11 +44,6 @@ function domain(value?: string): string {
   } catch { return ""; }
 }
 
-function socialId(value?: string): string {
-  if (!value) return "";
-  return value.toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "").split("?")[0];
-}
-
 function extractEmail(text: string): string | undefined {
   return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
 }
@@ -198,20 +193,6 @@ async function serperSearch(query: string, num = 10): Promise<SearchResult[]> {
   }
 
   return json.organic;
-}
-
-async function enrich(url: string): Promise<Partial<Candidate>> {
-  if (!url || /^https?:\/\/(www\.)?(instagram|facebook|linkedin|google)\./i.test(url)) return {};
-  try {
-    const response = await fetch(url, { headers: { "User-Agent": "DFQLABS-LeadFinder/1.0 (+https://dfqlabs.com.ng)" }, signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return {};
-    const html = await response.text();
-    const compact = html.replace(/<script[\\s\\S]*?<\/script>/gi, " ").replace(/<style[\\s\\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\\s+/g, " ").slice(0, 120000);
-    const instagram = html.match(/https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.-]+/i)?.[0];
-    const facebook = html.match(/https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9_.-]+/i)?.[0];
-    const linkedin = html.match(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.-]+/i)?.[0];
-    return { website: url, instagram, facebook, linkedin, email: extractEmail(compact), phone: extractPhone(compact), description: compact.slice(0, 900) };
-  } catch { return { website: url }; }
 }
 
 function isSocial(url: string, host: string) {
@@ -494,7 +475,8 @@ export class LeadFinderService {
       if (!sourceStats[item.sourceFamily]) sourceStats[item.sourceFamily] = { queries: 0, candidates: 0, qualified: 0 };
     }
     const created: Candidate[] = [];
-    let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
+    let found = 0, qualified = 0, duplicate = 0, rejected = 0, providerQueries = 0;
+    const insufficient = 0;
     let verificationSearches = 0;
     const rejectionReasons: Record<string, number> = {
       invalidSearchResult: 0, genericCompanyName: 0, officialWebsiteNotVerified: 0, weakIdentityMatch: 0,
@@ -506,7 +488,6 @@ export class LeadFinderService {
     const VERIFICATION_CONCURRENCY = 4;
     const MAX_VERIFICATION_SEARCHES = Math.min(150, Math.max(30, remaining * 3));
 
-    let qualificationReservations = 0;
     const addCandidate = async (result: SearchResult, sourceFamily: string, location: string) => {
       const rawTitle = result.title?.trim() || "";
       const rawUrl = result.link?.trim() || "";
