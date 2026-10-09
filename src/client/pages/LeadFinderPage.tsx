@@ -166,6 +166,8 @@ export const LeadFinderPage: React.FC = () => {
         <span>{summary?.lastRun ? new Date(summary.lastRun.created_at).toLocaleString() : "No runs yet"}</span>
       </div>
       {history.length ? <div className="finder-history-list">{history.map((r:any)=><div className="finder-run-row" key={r.id}><span className="run-date">{r.run_date}</span><strong>{r.qualified_count} qualified</strong><span>{r.found_count} candidates · {r.duplicate_count} duplicates</span><b className={r.status === "COMPLETED" ? "ok" : ""}>{r.status}</b></div>)}</div> : <div className="empty-state"><strong>No prospecting runs yet.</strong><span>Run the engine to build today’s fresh pipeline.</span></div>}
+      {latestRun?.status === "PARTIAL" && <div className="finder-diagnostics-note"><strong>Partial means the scan finished without reaching its qualified-lead target.</strong><span>{latestRun.stats?.statusMessage || "The configured discovery budget ended before the target was reached."} Raw candidates are not the same as verified, outreach-ready prospects.</span></div>}
+      {latestRun?.status === "FAILED" && <div className="finder-diagnostics-note"><strong>The scan failed before normal completion.</strong><span>{latestRun.stats?.error || latestRun.stats?.statusMessage || "Check provider configuration and the server logs, then retry."}</span></div>}
     </div>
 
     {activeRole === "FOUNDER" && latestRun && latestRun.status !== "RUNNING" && (
