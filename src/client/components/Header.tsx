@@ -26,9 +26,7 @@ export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
             Seat: <strong style={{ color: "var(--text-primary)" }}>{seat.displayName}</strong>
           </span>
         )}
-        <span className={`role-badge ${activeRole === "FOUNDER" ? "role-founder" : "role-specialist"}`}>
-          {activeRole}
-        </span>
+        {activeRole !== "FOUNDER" && <span className="role-badge role-specialist">{activeRole === "OUTREACH_SPECIALIST" ? "SPECIALIST" : activeRole}</span>}
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "13px", fontWeight: 600 }}>{activeRole === "FOUNDER" ? "CEO" : (user?.fullName ?? "Loading...")}</div>
           {activeRole !== "FOUNDER" && <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user?.email}</div>}
