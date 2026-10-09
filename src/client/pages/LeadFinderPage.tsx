@@ -83,6 +83,9 @@ export const LeadFinderPage: React.FC = () => {
     }
   };
 
+  const latestRun = history[0] || null;
+  const diagnostics = latestRun?.stats?.rejectionReasons || {};
+
   const pct = summary
     ? Math.min(100, Math.round((summary.newQualifiedToday / Math.max(1, summary.target)) * 100))
     : 0;
@@ -90,13 +93,13 @@ export const LeadFinderPage: React.FC = () => {
   return <section className="lead-finder-page">
     <div className="lead-finder-hero">
       <div>
-        <div className="eyebrow">DFQLABS / PROSPECTING INTELLIGENCE</div>
-        <h1>Find today’s next 30.</h1>
+        <div className="eyebrow"><span className="finder-live-dot" /> DFQLABS / PROSPECTING INTELLIGENCE</div>
+        <h1>Find today’s next 30<span className="hero-period">.</span></h1>
         <p>Discover fresh Nigerian real-estate prospects, qualify them against the DFQLABS standard, and feed only outreach-ready companies into the canonical CRM.</p>
       </div>
       <div className="lead-finder-actions">
         <button className="btn-primary lead-finder-run" onClick={run} disabled={running}>
-          {running ? "Scanning the market…" : "✦ Find Today’s 30"}
+          {running ? "Scanning the market…" : "Find today’s 30"}
         </button>
         {activeRole === "FOUNDER" && running && <button className="btn-secondary" onClick={async () => {
           if (!window.confirm("Cancel the active Lead Finder run? This keeps any already-qualified leads and only stops the current scan.")) return;
@@ -162,8 +165,24 @@ export const LeadFinderPage: React.FC = () => {
         <div><div className="eyebrow">PROSPECTING HISTORY</div><h2>Daily acquisition runs</h2></div>
         <span>{summary?.lastRun ? new Date(summary.lastRun.created_at).toLocaleString() : "No runs yet"}</span>
       </div>
-      {history.length ? <div className="finder-history-list">{history.map((r:any)=><div className="finder-run-row" key={r.id}><span>{r.run_date}</span><strong>{r.qualified_count} qualified</strong><span>{r.found_count} found · {r.duplicate_count} duplicates</span><b className={r.status === "COMPLETED" ? "ok" : ""}>{r.status}</b></div>)}</div> : <div className="empty-state"><strong>No prospecting runs yet.</strong><span>Run the engine to build today’s fresh pipeline.</span></div>}
+      {history.length ? <div className="finder-history-list">{history.map((r:any)=><div className="finder-run-row" key={r.id}><span className="run-date">{r.run_date}</span><strong>{r.qualified_count} qualified</strong><span>{r.found_count} candidates · {r.duplicate_count} duplicates</span><b className={r.status === "COMPLETED" ? "ok" : ""}>{r.status}</b></div>)}</div> : <div className="empty-state"><strong>No prospecting runs yet.</strong><span>Run the engine to build today’s fresh pipeline.</span></div>}
     </div>
+
+    {activeRole === "FOUNDER" && latestRun && latestRun.qualified_count === 0 && latestRun.status !== "RUNNING" && (
+      <section className="card finder-diagnostics">
+        <div className="eyebrow">RUN DIAGNOSTICS</div>
+        <h3>Why this scan saved no leads</h3>
+        <p>Search results are candidates, not approved prospects. This breakdown shows where they were filtered. Quality and valid Nigerian phone checks remain in place.</p>
+        <div className="diagnostic-grid">
+          <div><span>Official website / phone not verified</span><strong>{diagnostics.officialWebsiteNotVerified ?? "Not recorded"}</strong></div>
+          <div><span>Weak identity match</span><strong>{diagnostics.weakIdentityMatch ?? "Not recorded"}</strong></div>
+          <div><span>Invalid Nigerian phone</span><strong>{diagnostics.invalidNigeriaPhone ?? "Not recorded"}</strong></div>
+          <div><span>Below minimum score</span><strong>{diagnostics.belowMinimumScore ?? "Not recorded"}</strong></div>
+          <div><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? "Not recorded"}</strong></div>
+          <div><span>Save errors</span><strong>{diagnostics.persistenceError ?? "Not recorded"}</strong></div>
+        </div>
+      </section>
+    )}
 
     {activeRole === "FOUNDER" && <p className="finder-footnote">Founder controls can configure the daily target, minimum quality score, locations, industries, and provider credentials. Outreach remains human-approved.</p>}
   </section>;
