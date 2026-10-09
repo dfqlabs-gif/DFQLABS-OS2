@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Activity, BrainCircuit, LayoutDashboard, MessageCircle, Search, Target, Users, Workflow, Plus, TrendingUp } from "lucide-react";
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -29,14 +30,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   if (!isOpen) return null;
 
   const actions = [
-    { label: "Go to Today's Focus", path: "/focus", icon: "🎯" },
-    { label: "View My Prospects", path: "/prospects", icon: "👥" },
-    { label: "Capture New Prospect", path: "/prospects/new", icon: "➕" },
-    { label: "Open Conversations", path: "/conversations", icon: "💬" },
-    { label: "Specialist Performance", path: "/performance", icon: "📊" },
-    { label: "Founder Mission Control", path: "/admin/dashboard", icon: "🚀" },
-    { label: "Team & Seats", path: "/admin/team", icon: "🪑" },
-    { label: "Learning Intelligence", path: "/admin/intelligence", icon: "🧠" }
+    { label: "CEO Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
+    { label: "Lead Finder", path: "/lead-finder", icon: Search },
+    { label: "Lead Directory", path: "/prospects", icon: Users },
+    { label: "Pipeline", path: "/pipeline", icon: Workflow },
+    { label: "Conversations", path: "/conversations", icon: MessageCircle },
+    { label: "Today's Focus", path: "/focus", icon: Target },
+    { label: "Add a Prospect", path: "/prospects/new", icon: Plus },
+    { label: "Team & Seats", path: "/admin/team", icon: Users },
+    { label: "Learning Intelligence", path: "/admin/intelligence", icon: BrainCircuit },
+    { label: "Performance", path: "/performance", icon: TrendingUp }
   ];
 
   const filtered = actions.filter((a) => a.label.toLowerCase().includes(query.toLowerCase()));
@@ -45,7 +48,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     <div className="command-overlay" onClick={onClose}>
       <div className="command-modal" onClick={(e) => e.stopPropagation()}>
         <div className="command-input-wrapper">
-          <span style={{ marginRight: "12px", color: "var(--accent-glacier)" }}>🔍</span>
+          <Search size={17} style={{ marginRight: "12px", color: "var(--accent-glacier)", flexShrink: 0 }} />
           <input
             type="text"
             className="command-input"
@@ -70,7 +73,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                   onClose();
                 }}
               >
-                <span>{action.icon}</span>
+                <span className="command-item-icon"><action.icon size={17} strokeWidth={1.8} /></span>
                 <span style={{ fontWeight: 500 }}>{action.label}</span>
               </div>
             ))
