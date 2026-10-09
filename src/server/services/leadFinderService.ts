@@ -242,7 +242,7 @@ function parseWebsiteIdentity(html: string) {
   };
 }
 
-async function inspectWebsite(url: string, companyName: string, location: string): Promise<{ website?: string; instagram?: string; facebook?: string; linkedin?: string; email?: string; phone?: string; description?: string; confidence: number; signals: string[]; evidence: Record<string, unknown> } | null> {
+async function inspectWebsite(url: string, companyName: string, location: string, corroboratedPhone?: string): Promise<{ website?: string; instagram?: string; facebook?: string; linkedin?: string; email?: string; phone?: string; description?: string; confidence: number; signals: string[]; evidence: Record<string, unknown> } | null> {
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": "DFQLABS-LeadFinder/2.0 (+https://dfqlabs.com.ng)" },
@@ -267,7 +267,8 @@ async function inspectWebsite(url: string, companyName: string, location: string
     const facebook = identity.sameAs.find((s) => /facebook\.com/i.test(s)) || html.match(/https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9_.-]+/i)?.[0];
     const linkedin = identity.sameAs.find((s) => /linkedin\.com\/(?:company|in)\//i.test(s)) || html.match(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.-]+/i)?.[0];
     const email = extractEmail(compact);
-    const phone = extractPhone(identity.telephone || "") || extractPhone(compact);
+    const officialSitePhone = extractPhone(identity.telephone || "") || extractPhone(compact);
+    const phone = officialSitePhone || normalizeNigeriaPhone(corroboratedPhone);
     const siteIdentity = identity.name || siteName;
     const nameOverlap = tokenOverlap(companyName, siteIdentity);
     const titleOverlap = tokenOverlap(companyName, title);
@@ -309,7 +310,8 @@ async function inspectWebsite(url: string, companyName: string, location: string
         siteName: siteName || null,
         structuredName: siteIdentity || null,
         canonical: canonical || null,
-        structuredTelephone: identity.telephone || null
+        structuredTelephone: identity.telephone || null,
+        phoneEvidence: officialSitePhone ? "OFFICIAL_WEBSITE" : phone ? "CORROBORATED_SEARCH_RESULT" : null
       }
     };
   } catch { return null; }
@@ -342,7 +344,12 @@ async function resolveVerifiedWebsite(companyName: string, location: string): Pr
     .slice(0, 4);
 
   for (const candidate of ranked) {
-    const verified = await inspectWebsite(candidate.url, companyName, location);
+    const titleMatchesCompany = tokenOverlap(companyName, results.find((r) => r.link === candidate.url)?.title) >= 0.5;
+    const matchingResult = results.find((r) => r.link === candidate.url);
+    const corroboratedPhone = titleMatchesCompany && realEstateEvidence(`${matchingResult?.title || ""} ${matchingResult?.snippet || ""}`)
+      ? extractPhone(`${matchingResult?.title || ""} ${matchingResult?.snippet || ""}`)
+      : undefined;
+    const verified = await inspectWebsite(candidate.url, companyName, location, corroboratedPhone);
     if (verified) return verified;
   }
   return null;
@@ -467,8 +474,11 @@ export class LeadFinderService {
     // Interleave source families across all configured locations. A capped run
     // must not spend nearly its entire budget on the first six cities and barely
     // touch the last one.
-    const sourceQueries = queryVariants.flatMap((variant) =>
-      settings.locations.map((location) => ({ sourceFamily: variant.sourceFamily, query: variant.build(location) }))
+    // Spread the first 90-query budget across every location and source family.
+    // Grouping all Instagram queries first meant a capped/interrupted run could
+    // spend its entire budget before reaching directories or official websites.
+    const sourceQueries = settings.locations.flatMap((location) =>
+      queryVariants.map((variant) => ({ sourceFamily: variant.sourceFamily, query: variant.build(location) }))
     );
 
     const existing = await this.existingIdentifiers();
@@ -521,7 +531,7 @@ export class LeadFinderService {
       // If the result is already an apparent company website, inspect it directly.
       // This is both cheaper and safer than trusting the search-result title.
       if (!isSocial(rawUrl, "instagram.com") && !isSocial(rawUrl, "facebook.com") && !isSocial(rawUrl, "linkedin.com") && !listingLikeUrl(rawUrl)) {
-        verified = await inspectWebsite(rawUrl, companyName, location);
+        verified = await inspectWebsite(rawUrl, companyName, location, extractPhone(`${rawTitle} ${rawSnippet}`));
       }
 
       // Social pages/directories are discovery sources, not identity authorities.
