@@ -225,14 +225,12 @@ export class PersistentProspectService {
     }).select("*").single();
     if (error || !row) throw new Error(error?.message || "Unable to create lead");
 
-    type InsertContact = { lead_id: string; contact_type: string; raw_value: string; normalized_value: string; is_primary: boolean };
     const contacts: Array<{ lead_id: string; contact_type: string; raw_value: string; normalized_value: string; is_primary: boolean }> = [];
     if (input.phone) contacts.push({ lead_id: id, contact_type: "PHONE", raw_value: input.phone, normalized_value: normalizePhone(input.phone), is_primary: true });
     if (input.whatsapp) contacts.push({ lead_id: id, contact_type: "WHATSAPP", raw_value: input.whatsapp, normalized_value: normalizePhone(input.whatsapp), is_primary: !input.phone });
     if (input.email) contacts.push({ lead_id: id, contact_type: "EMAIL", raw_value: input.email, normalized_value: input.email.trim().toLowerCase(), is_primary: false });
     if (contacts.length) { const { error: e } = await db.from("lead_contacts").insert(contacts); if (e) throw new Error(e.message); }
 
-    type InsertSocial = { lead_id: string; platform: string; handle_or_url: string; normalized_identifier: string };
     const socials: Array<{ lead_id: string; platform: string; handle_or_url: string; normalized_identifier: string }> = [];
     if (input.instagram) socials.push({ lead_id: id, platform: "INSTAGRAM", handle_or_url: input.instagram, normalized_identifier: normalizeSocialIdentifier(input.instagram) });
     if (input.website) socials.push({ lead_id: id, platform: "WEBSITE", handle_or_url: input.website, normalized_identifier: normalizeSocialIdentifier(input.website) });
