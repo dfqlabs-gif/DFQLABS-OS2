@@ -2,6 +2,8 @@ import {
   DuplicateCheckResult,
   FocusItem,
   Lead,
+  LeadContact,
+  LeadSocialProfile,
   Message,
   MissionControlMetrics,
   Outcome,
@@ -116,7 +118,7 @@ export class ApiClient {
 
   public static getProspectDetail(
     id: string
-  ): Promise<{ lead: Lead; contacts: unknown[]; socialProfiles: unknown[]; messages: Message[] }> {
+  ): Promise<{ lead: Lead; contacts: LeadContact[]; socialProfiles: LeadSocialProfile[]; messages: Message[]; conversation?: { id: string } }> {
     return this.request(`/api/v1/prospects/${id}`);
   }
 
