@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BrainCircuit, ChevronRight, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Plus, Search, Sparkles, Target, TrendingUp, Users, Workflow } from "lucide-react";
+import { BrainCircuit, LayoutDashboard, MessageCircle, PanelLeftClose, PanelLeftOpen, Plus, Search, Target, TrendingUp, Users, Workflow } from "lucide-react";
 import { useAuth } from "../context/AuthContext.js";
 
 interface SidebarProps {
