@@ -282,14 +282,21 @@ async function inspectWebsite(url: string, companyName: string, location: string
     if (realEstateMatch) signals.push("REAL_ESTATE_CONTENT_MATCH");
     if (instagram && tokenOverlap(companyName, instagram.split("/").filter(Boolean).pop()) >= 0.5) signals.push("INSTAGRAM_HANDLE_MATCH");
 
-    const confidence = Math.min(100, Math.round(
-      domainOverlap * 40 + nameOverlap * 30 + titleOverlap * 15 +
-      (locationMatch ? 5 : 0) + (realEstateMatch ? 10 : 0)
-    ));
     const strong = signals.filter((s) => ["DOMAIN_BRAND_MATCH","STRUCTURED_NAME_MATCH","PAGE_TITLE_MATCH","INSTAGRAM_HANDLE_MATCH"].includes(s));
-    // WhatsApp is the team's actual outbound channel. A prospect is not qualified
-    // unless the verified company identity exposes a usable Nigerian phone number.
-    if (confidence < 75 || strong.length < 2 || !realEstateMatch || !phone) return null;
+    // Confidence must agree with the explicit identity-signal gate. The old weighted
+    // formula capped a legitimate domain + page-title + real-estate match at 65–70,
+    // so the subsequent 75-point cutoff silently rejected many otherwise valid firms.
+    // Keep two independent strong identity signals, real-estate evidence and a valid
+    // Nigerian phone as hard requirements; use a calibrated confidence threshold.
+    const confidence = Math.min(100, Math.round(
+      (domainOverlap >= 0.34 ? 30 : 0) +
+      (nameOverlap >= 0.5 ? 25 : 0) +
+      (titleOverlap >= 0.5 ? 25 : 0) +
+      (locationMatch ? 5 : 0) +
+      (realEstateMatch ? 15 : 0) +
+      (signals.includes("INSTAGRAM_HANDLE_MATCH") ? 10 : 0)
+    ));
+    if (confidence < 60 || strong.length < 2 || !realEstateMatch || !phone) return null;
 
     return {
       website: canonical || url,
@@ -505,7 +512,7 @@ export class LeadFinderService {
         verified = await resolveVerifiedWebsite(companyName, location);
       }
 
-      if (!verified || !verified.phone || verified.confidence < 75) {
+      if (!verified || !verified.phone || verified.confidence < 60) {
         bumpRejection("officialWebsiteNotVerified");
         return;
       }
