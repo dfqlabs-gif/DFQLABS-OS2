@@ -62,23 +62,31 @@ export const LeadFinderPage: React.FC = () => {
   }, [running, refresh]);
 
   const run = async () => {
+    // Catch every awaited operation, including the preflight refresh. Previously
+    // refresh() ran outside try/catch, so a summary/history API failure made the
+    // button appear completely dead and emitted only an unhandled rejection.
+    if (running) return;
     setError("");
-
-    // Never start a second scan from the UI. The authoritative run state lives
-    // in the database, so returning to this page cannot accidentally restart work.
-    const active = await refresh();
-    if (active) {
-      setError("A Lead Finder scan is already running. Reattached to the active scan.");
-      return;
-    }
-
     setRunning(true);
     try {
+      // The database remains authoritative: reconnect to an existing scan rather
+      // than accidentally starting a duplicate run.
+      const active = await refresh();
+      if (active) {
+        setError("A Lead Finder scan is already running. Reattached to the active scan.");
+        return;
+      }
+
+      // The server responds 202 as soon as the durable background run is accepted.
       const result = await ApiClient.runLeadFinder();
-      setProgress(result?.lastRun || null);
+      if (result?.accepted === false) {
+        throw new Error(result?.message || "The server did not accept the Lead Finder run.");
+      }
+      setProgress(result?.lastRun || { status: "RUNNING", target: summary?.target || 30, stats: { statusMessage: result?.message || "Scan accepted. Connecting to live progress…" } });
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Lead Finder failed.");
+      setRunning(false);
+      setError(e instanceof Error ? e.message : "Lead Finder could not start. Check the connection and try again.");
       await refresh().catch(() => undefined);
     }
   };
