@@ -157,6 +157,12 @@ function scoreCandidate(input: { title: string; snippet: string; url: string; lo
   return { score, breakdown };
 }
 
+function isSerperCreditExhausted(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /serper.*(?:not enough credits|insufficient credits|out of credits|credit balance)|(?:not enough credits|insufficient credits|out of credits|credit balance).*serper/i.test(message)
+    || /HTTP 400:\s*Not enough credits/i.test(message);
+}
+
 async function serperSearch(query: string, num = 10): Promise<SearchResult[]> {
   const key = process.env.SERPER_API_KEY?.trim();
   if (!key) {
@@ -326,7 +332,14 @@ async function resolveVerifiedWebsite(companyName: string, location: string): Pr
   ];
   const results: SearchResult[] = [];
   for (const query of queries) {
-    try { results.push(...await serperSearch(query, 6)); } catch { /* enrichment is best effort */ }
+    try {
+      results.push(...await serperSearch(query, 6));
+    } catch (error) {
+      // A credit/quota failure is global to the provider, not a bad individual
+      // query. Do not hide it or keep spending requests during enrichment.
+      if (isSerperCreditExhausted(error)) throw error;
+      // Other enrichment failures remain best-effort.
+    }
     if (results.length >= 10) break;
   }
 
@@ -684,7 +697,10 @@ export class LeadFinderService {
         try {
           results = await serperSearch(plan.query, 10);
         } catch (error) {
-          if (providerQueries === 1) throw error;
+          // Stop immediately when Serper reports exhausted credits. Continuing
+          // the remaining query plan cannot succeed and only creates noisy,
+          // expensive retries. Persist the actionable provider error below.
+          if (isSerperCreditExhausted(error) || providerQueries === 1) throw error;
           continue;
         }
 
@@ -787,6 +803,10 @@ export class LeadFinderService {
         provider_queries: providerQueries,
         stats: {
           error: error instanceof Error ? error.message : String(error),
+          failureCode: isSerperCreditExhausted(error) ? "SERPER_CREDITS_EXHAUSTED" : "LEAD_FINDER_RUN_FAILED",
+          statusMessage: isSerperCreditExhausted(error)
+            ? "Serper search credits are exhausted. The scan stopped to avoid repeated failed requests. Add credits or configure a funded search provider, then retry."
+            : "Lead Finder stopped because of a provider or server error.",
           discoveryProvider: "SERPER_MULTI_SOURCE",
           verificationSearches,
           rejectionReasons: { ...rejectionReasons },
