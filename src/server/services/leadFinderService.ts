@@ -521,7 +521,9 @@ export class LeadFinderService {
         duplicate++;
         return;
       }
-      seen.add(companyKey);
+      // Do not reserve a company name before verification succeeds: an early,
+      // weak directory result must not suppress a later authoritative result
+      // for the same company from LinkedIn, Instagram, or its official website.
       found++;
 
       let verified: Awaited<ReturnType<typeof inspectWebsite>> | null = null;
@@ -558,6 +560,7 @@ export class LeadFinderService {
         return;
       }
 
+      seen.add(companyKey);
       const identifiers = [
         phone,
         verified.website ? domain(verified.website) : "",
