@@ -16,7 +16,21 @@ import outcomeRoutes from "./routes/outcomes.js";
 import prospectRoutes from "./routes/prospects.js";
 import leadFinderRoutes from "./routes/leadFinder.js";
 
-const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
+// Never write credentials or session material into Render request logs.
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: {
+    paths: [
+      "req.headers.authorization",
+      "req.headers.cookie",
+      "req.headers['set-cookie']",
+      "req.headers['x-api-key']",
+      "req.headers['X-API-KEY']",
+      "res.headers['set-cookie']"
+    ],
+    censor: "[REDACTED]"
+  }
+});
 
 export function createApp() {
   const app = express();
