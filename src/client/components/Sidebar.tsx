@@ -22,10 +22,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
 
   const founderNav = [
     { path: "/admin/dashboard", label: "CEO Dashboard", icon: LayoutDashboard },
-    { path: "/lead-finder", label: "Lead Finder", icon: "✦" },
-    { path: "/prospects", label: "Lead Directory", icon: "▤" },
+    { path: "/lead-finder", label: "Lead Finder", icon: Search },
+    { path: "/prospects", label: "Lead Directory", icon: Users },
     { path: "/pipeline", label: "Pipeline", icon: Workflow },
-    { path: "/conversations", label: "Conversations", icon: "◌" },
+    { path: "/conversations", label: "Conversations", icon: MessageCircle },
     { path: "/admin/team", label: "Team & Seats", icon: Users },
     { path: "/admin/intelligence", label: "Learning Intelligence", icon: BrainCircuit }
   ];
