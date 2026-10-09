@@ -97,8 +97,20 @@ function isValidInstagramProfile(url: string): boolean {
   } catch { return false; }
 }
 
+function isGenericCompanyName(value: string): boolean {
+  const name = normalize(value)
+    .replace(/[|–—-]/g, " ")
+    .replace(/\b(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin city|akwa ibom)\b/g, " ")
+    .replace(/\b(limited|ltd|plc|nigeria)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name || name.length < 4) return true;
+  return /^(?:real estate|property|properties|realty|realtor|housing|estate|luxury real estate|real estate company|property company|real estate agency|property agency|real estate developer|property developer|real estate investment company|real estate companies|property companies|real estate agencies|property agencies|real estate developers|best real estate companies|top real estate companies|unknown real estate company)(?: in .*)?$/.test(name);
+}
+
 function looksLikeCompanyResult(title: string, snippet: string, url: string): boolean {
   const titleText = normalize(title);
+  if (isGenericCompanyName(titleText.split(/\s[|–—-]\s/)[0])) return false;
   const text = normalize([title, snippet, url].join(" "));
   const contentOnly = /\b(study|research|survey|article|blog|why|how to|near me|find real estate|top \d+|list of|directory|report|news|guide|market trends|jobs|vacancy|pdf)\b/i;
   const listingLike = /\b(plots?|units?|apartments?|houses?|homes?|properties?)\s+(for sale|available|at|on|near)|\b(for sale|for rent|renting|listing|price per plot|sqm|square metres?)\b/i;
@@ -457,7 +469,12 @@ export class LeadFinderService {
       { sourceFamily: "LINKEDIN", build: (location: string) => `site:linkedin.com/company "${location}" Nigeria ("luxury real estate" OR "property investment" OR "real estate investment" OR housing)` },
       { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria real estate company developer realtor properties -jobs -news -article -directory -listing` },
       { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria realty property company developer homes agency -jobs -news -article -directory -listing` },
-      { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria luxury real estate property investment developer agency -jobs -news -article -directory -listing` }
+      { sourceFamily: "DIRECTORY", build: (location: string) => `"${location}" Nigeria luxury real estate property investment developer agency -jobs -news -article -directory -listing` },
+      { sourceFamily: "PROPERTY_DIRECTORY", build: (location: string) => `site:nigeriapropertycentre.com "${location}" (developer OR agency OR real estate company) Nigeria` },
+      { sourceFamily: "PROPERTY_DIRECTORY", build: (location: string) => `site:propertypro.ng "${location}" (real estate agency OR property developer OR realtor) Nigeria` },
+      { sourceFamily: "GOOGLE_BUSINESS", build: (location: string) => `"${location}" Nigeria real estate companies phone website Google Maps` },
+      { sourceFamily: "COMPANY_WEB", build: (location: string) => `"${location}" Nigeria real estate developer official website contact phone` },
+      { sourceFamily: "COMPANY_WEB", build: (location: string) => `"${location}" luxury property developers real estate firm contact Nigeria` }
     ];
     const sourceQueries = settings.locations.flatMap((location) =>
       queryVariants.map((variant) => ({ sourceFamily: variant.sourceFamily, query: variant.build(location) }))
@@ -469,7 +486,7 @@ export class LeadFinderService {
     let found = 0, qualified = 0, duplicate = 0, rejected = 0, insufficient = 0, providerQueries = 0;
     let verificationSearches = 0;
     const rejectionReasons: Record<string, number> = {
-      invalidSearchResult: 0, officialWebsiteNotVerified: 0, weakIdentityMatch: 0,
+      invalidSearchResult: 0, genericCompanyName: 0, officialWebsiteNotVerified: 0, weakIdentityMatch: 0,
       invalidNigeriaPhone: 0, duplicateIdentity: 0, belowMinimumScore: 0, persistenceError: 0
     };
     const bumpRejection = (reason: string) => { rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1; rejected++; };
@@ -490,6 +507,10 @@ export class LeadFinderService {
 
       const companyName = cleanCompanyName(rawTitle, rawUrl);
       const companyKey = normalize(companyName);
+      if (isGenericCompanyName(companyName)) {
+        bumpRejection("genericCompanyName");
+        return;
+      }
       if (!companyKey || existing.has(companyKey) || seen.has(companyKey)) {
         duplicate++;
         return;
@@ -685,7 +706,7 @@ export class LeadFinderService {
             verificationSearches,
             rejectionReasons: { ...rejectionReasons },
             discoveryProvider: "SERPER_MULTI_SOURCE",
-            sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
+            sourceFamilies: [...new Set(sourceQueries.map((item) => item.sourceFamily))],
             statusMessage: created.length >= remaining
               ? "Target reached. Finalizing verified prospects…"
               : `Discovery pass ${providerQueries} of ${Math.min(sourceQueries.length, MAX_DISCOVERY_QUERIES)} — verified ${created.length}/${remaining}`
@@ -713,7 +734,7 @@ export class LeadFinderService {
           locations: settings.locations,
           industries: settings.industries,
           discoveryProvider: "SERPER_MULTI_SOURCE",
-          sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"],
+          sourceFamilies: [...new Set(sourceQueries.map((item) => item.sourceFamily))],
           verificationSearches,
           rejectionReasons: { ...rejectionReasons },
           discoveryBudget: { maxQueries: MAX_DISCOVERY_QUERIES, maxResults: MAX_DISCOVERY_RESULTS, queriesUsed: providerQueries, resultsFound: found },
@@ -739,7 +760,7 @@ export class LeadFinderService {
           insufficient,
           providerQueries,
           verificationSearches,
-          sourceFamilies: ["INSTAGRAM", "LINKEDIN", "DIRECTORY"]
+          sourceFamilies: [...new Set(sourceQueries.map((item) => item.sourceFamily))]
         }
       };
     } catch (error) {
