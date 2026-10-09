@@ -56,18 +56,24 @@ function extractEmail(text: string): string | undefined {
 function normalizeNigeriaPhone(value?: string): string | undefined {
   if (!value) return undefined;
   const digits = value.replace(/\D/g, "");
-  if (digits.length === 13 && digits.startsWith("234")) return `+${digits}`;
-  if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`;
-  if (digits.length === 10) return `+234${digits}`;
-  return undefined;
+  const national = digits.startsWith("234") && digits.length === 13
+    ? digits.slice(3)
+    : digits.startsWith("0") && digits.length === 11
+      ? digits.slice(1)
+      : digits.length === 10
+        ? digits
+        : "";
+  // Keep only plausible Nigerian mobile numbers. Shape-only checks allowed
+  // placeholder numbers and non-mobile strings into "verified" outreach leads.
+  if (!national || !/^(?:70|80|81|90|91)\d{8}$/.test(national) || /^([0-9])\1{9}$/.test(national)) return undefined;
+  return `+234${national}`;
 }
 
 function extractPhone(text: string): string | undefined {
   const candidates = text.match(/(?:\+?234|0)[0-9\s().-]{9,18}/g) || [];
   for (const candidate of candidates) {
-    const digits = candidate.replace(/\D/g, "");
-    if (digits.length === 13 && digits.startsWith("234")) return `+${digits}`;
-    if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`;
+    const normalized = normalizeNigeriaPhone(candidate);
+    if (normalized) return normalized;
   }
   return undefined;
 }
