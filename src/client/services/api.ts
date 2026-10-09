@@ -10,13 +10,30 @@ import {
 } from "../../shared/types/index.js";
 
 const API_BASE = "";
+const AUTH_TOKEN_KEY = "dfqlabs-os2-token";
+
+// Some mobile browsers and privacy modes can block persistent storage. Authentication
+// must still work for the current page session when localStorage is unavailable.
+function readStoredToken(): string {
+  try { return window.localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
+  catch { return ""; }
+}
+
+function persistToken(token: string): void {
+  try {
+    if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    // Keep the in-memory session; storage persistence is best-effort on restricted browsers.
+  }
+}
 
 export class ApiClient {
-  private static token = localStorage.getItem("dfqlabs-os2-token") || "";
+  private static token = readStoredToken();
 
   public static setAuthToken(token: string) {
     this.token = token;
-    if (token) localStorage.setItem("dfqlabs-os2-token", token); else localStorage.removeItem("dfqlabs-os2-token");
+    persistToken(token);
   }
 
   private static async request<T>(path: string, options: RequestInit & { skipAuth?: boolean } = {}): Promise<T> {
