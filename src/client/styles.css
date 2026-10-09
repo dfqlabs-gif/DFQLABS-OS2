@@ -845,3 +845,7 @@ button { -webkit-tap-highlight-color:transparent; }
  .header { padding:0 16px; } .page-title { font-size:15px; } .page-body { padding:14px; }
 }
 @media(max-width:380px) { .diagnostic-grid { grid-template-columns:1fr; } .finder-run-row { font-size:12px; } }
+
+.header-search-label { display:inline-flex; align-items:center; gap:8px; }
+.kbd-shortcut { display:inline-flex; align-items:center; gap:3px; }
+.nav-icon { display:inline-flex; align-items:center; justify-content:center; width:20px; flex-shrink:0; }
