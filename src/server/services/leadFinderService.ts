@@ -464,8 +464,11 @@ export class LeadFinderService {
       { sourceFamily: "COMPANY_WEB", build: (location: string) => `"${location}" Nigeria real estate developer official website contact phone` },
       { sourceFamily: "COMPANY_WEB", build: (location: string) => `"${location}" luxury property developers real estate firm contact Nigeria` }
     ];
-    const sourceQueries = settings.locations.flatMap((location) =>
-      queryVariants.map((variant) => ({ sourceFamily: variant.sourceFamily, query: variant.build(location) }))
+    // Interleave source families across all configured locations. A capped run
+    // must not spend nearly its entire budget on the first six cities and barely
+    // touch the last one.
+    const sourceQueries = queryVariants.flatMap((variant) =>
+      settings.locations.map((location) => ({ sourceFamily: variant.sourceFamily, query: variant.build(location) }))
     );
 
     const existing = await this.existingIdentifiers();
