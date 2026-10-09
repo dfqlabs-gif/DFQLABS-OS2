@@ -168,18 +168,26 @@ export const LeadFinderPage: React.FC = () => {
       {history.length ? <div className="finder-history-list">{history.map((r:any)=><div className="finder-run-row" key={r.id}><span className="run-date">{r.run_date}</span><strong>{r.qualified_count} qualified</strong><span>{r.found_count} candidates · {r.duplicate_count} duplicates</span><b className={r.status === "COMPLETED" ? "ok" : ""}>{r.status}</b></div>)}</div> : <div className="empty-state"><strong>No prospecting runs yet.</strong><span>Run the engine to build today’s fresh pipeline.</span></div>}
     </div>
 
-    {activeRole === "FOUNDER" && latestRun && latestRun.qualified_count === 0 && latestRun.status !== "RUNNING" && (
+    {activeRole === "FOUNDER" && latestRun && latestRun.status !== "RUNNING" && (
       <section className="card finder-diagnostics">
         <div className="eyebrow">RUN DIAGNOSTICS</div>
-        <h3>Why this scan saved no leads</h3>
-        <p>Search results are candidates, not approved prospects. This breakdown shows where they were filtered. Quality and valid Nigerian phone checks remain in place.</p>
+        <h3>Lead quality &amp; verification report</h3>
+        <p>Search-result counts are not qualified leads. This report shows why candidates were rejected, so source coverage and verification quality can be improved without weakening the phone and identity checks.</p>
         <div className="diagnostic-grid">
-          <div><span>Official website / phone not verified</span><strong>{diagnostics.officialWebsiteNotVerified ?? "Not recorded"}</strong></div>
+          <div><span>Raw candidates reviewed</span><strong>{latestRun.found_count ?? 0}</strong></div>
+          <div><span>Saved as qualified</span><strong>{latestRun.qualified_count ?? 0}</strong></div>
+          <div><span>Generic / non-company names</span><strong>{diagnostics.genericCompanyName ?? 0}</strong></div>
+          <div><span>Official identity / phone not verified</span><strong>{diagnostics.officialWebsiteNotVerified ?? "Not recorded"}</strong></div>
           <div><span>Weak identity match</span><strong>{diagnostics.weakIdentityMatch ?? "Not recorded"}</strong></div>
-          <div><span>Invalid Nigerian phone</span><strong>{diagnostics.invalidNigeriaPhone ?? "Not recorded"}</strong></div>
+          <div><span>Invalid Nigerian mobile number</span><strong>{diagnostics.invalidNigeriaPhone ?? "Not recorded"}</strong></div>
           <div><span>Below minimum score</span><strong>{diagnostics.belowMinimumScore ?? "Not recorded"}</strong></div>
-          <div><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? "Not recorded"}</strong></div>
-          <div><span>Save errors</span><strong>{diagnostics.persistenceError ?? "Not recorded"}</strong></div>
+          <div><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? 0}</strong></div>
+          <div><span>Save errors</span><strong>{diagnostics.persistenceError ?? 0}</strong></div>
+        </div>
+        <div className="finder-meta">
+          <span>Queries used: {latestRun.provider_queries ?? latestRun.stats?.providerQueries ?? 0}</span>
+          <span>Verification searches: {latestRun.stats?.verificationSearches ?? "Not recorded"}</span>
+          <span>Result: {latestRun.status}</span>
         </div>
       </section>
     )}
