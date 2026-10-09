@@ -88,13 +88,13 @@ export const LeadFinderPage: React.FC = () => {
   // idle/sleeping web service, that can interrupt a long background run.
   React.useEffect(() => {
     if (!running) return;
-    let lock: { release: () => Promise<void> } | null = null;
+    let lock: { release: () => Promise<void>; addEventListener?: (type: "release", listener: () => void) => void } | null = null;
     let disposed = false;
     const requestWakeLock = async () => {
       if (document.visibilityState !== "visible") return;
       try {
         const wakeLockApi = (navigator as Navigator & {
-          wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> }
+          wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void>; addEventListener?: (type: "release", listener: () => void) => void }> }
         }).wakeLock;
         if (!wakeLockApi || lock) return;
         lock = await wakeLockApi.request("screen");
