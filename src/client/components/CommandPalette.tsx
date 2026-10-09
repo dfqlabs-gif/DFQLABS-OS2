@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Activity, BrainCircuit, LayoutDashboard, MessageCircle, Search, Target, Users, Workflow, Plus, TrendingUp } from "lucide-react";
+import { BrainCircuit, LayoutDashboard, MessageCircle, Search, Target, Users, Workflow, Plus, TrendingUp } from "lucide-react";
 
 interface CommandPaletteProps {
   isOpen: boolean;
