@@ -5,8 +5,7 @@ import { Skeleton } from "../components/Skeleton.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 
 const columns: { stage: PipelineStage; label: string; description: string }[] = [
-  { stage: "UNCONTACTED", label: "New", description: "Ready for first touch" },
-  { stage: "CONTACTED", label: "Contacted", description: "Waiting for a response" },
+  { stage: "CONTACTED", label: "Contacted", description: "WhatsApp sent and confirmed" },
   { stage: "REPLIED", label: "Replied", description: "Conversation is active" },
   { stage: "QUALIFIED", label: "Qualified", description: "Real opportunity" },
   { stage: "MEETING_SCHEDULED", label: "Meeting", description: "Meeting in motion" },
@@ -20,7 +19,7 @@ export const PipelinePage: React.FC<{ onNavigate: (path: string) => void }> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    ApiClient.getProspects({}).then((r) => setLeads(r.leads)).finally(() => setLoading(false));
+    ApiClient.getProspects({}).then((r) => setLeads(r.leads.filter((lead) => lead.pipelineStage !== "UNCONTACTED"))).catch(() => setLeads([])).finally(() => setLoading(false));
   }, []);
 
   const grouped = useMemo(() => columns.reduce<Record<string, Lead[]>>((acc, c) => {
@@ -31,7 +30,7 @@ export const PipelinePage: React.FC<{ onNavigate: (path: string) => void }> = ({
   return (
     <div className="pipeline-page">
       <section className="page-intro">
-        <div><div className="eyebrow">REVENUE FLOW</div><h1>Pipeline</h1><p>See every active opportunity and move it forward from one command surface.</p></div>
+        <div><div className="eyebrow">REVENUE FLOW</div><h1>Pipeline</h1><p>Only prospects with a WhatsApp message explicitly confirmed as sent enter this pipeline. Manage replies, follow-ups and commercial progress here.</p></div>
         <button className="btn-primary" onClick={() => onNavigate("/prospects/new")}>+ Add Prospect</button>
       </section>
       <div className="pipeline-summary">
@@ -45,7 +44,7 @@ export const PipelinePage: React.FC<{ onNavigate: (path: string) => void }> = ({
         return <section className="pipeline-column" key={column.stage}>
           <header><div><strong>{column.label}</strong><small>{column.description}</small></div><span>{items.length}</span></header>
           <div className="pipeline-cards">
-            {items.length === 0 ? <div className="pipeline-empty">No leads</div> : items.map(lead => <button className="pipeline-card" key={lead.id} onClick={() => onNavigate(`/prospects/${lead.id}`)}>
+            {items.length === 0 ? <div className="pipeline-empty">{column.stage === "CONTACTED" ? "Confirm a WhatsApp message sent from a prospect profile to add leads here." : "No leads in this stage yet."}</div> : items.map(lead => <button className="pipeline-card" key={lead.id} onClick={() => onNavigate(`/prospects/${lead.id}`)}>
               <div className="pipeline-card-top"><span className="avatar-tile">{(lead.companyName || "?").slice(0,1).toUpperCase()}</span><StatusBadge status={lead.pipelineStage} /></div>
               <strong>{lead.companyName}</strong>
               <small>{lead.contactName || "Unknown contact"}</small>
