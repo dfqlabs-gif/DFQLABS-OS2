@@ -6,6 +6,7 @@ export const LeadFinderPage: React.FC = () => {
   const { activeRole } = useAuth();
   const [summary, setSummary] = React.useState<any>(null);
   const [running, setRunning] = React.useState(false);
+  const [starting, setStarting] = React.useState(false);
   const [error, setError] = React.useState("");
   const [history, setHistory] = React.useState<any[]>([]);
   const [progress, setProgress] = React.useState<any>(null);
@@ -31,7 +32,7 @@ export const LeadFinderPage: React.FC = () => {
   // The scan is server-owned. If the page is unmounted or the user switches tabs,
   // the server run continues; when this page mounts again we reattach to that run.
   React.useEffect(() => {
-    if (!running) return;
+    if (!running || starting) return;
     let cancelled = false;
 
     const poll = async () => {
@@ -59,35 +60,41 @@ export const LeadFinderPage: React.FC = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [running, refresh]);
+  }, [running, starting, refresh]);
 
   const run = async () => {
     // Catch every awaited operation, including the preflight refresh. Previously
     // refresh() ran outside try/catch, so a summary/history API failure made the
     // button appear completely dead and emitted only an unhandled rejection.
-    if (running) return;
+    if (running || starting) return;
     setError("");
-    setRunning(true);
+    setStarting(true);
     try {
       // The database remains authoritative: reconnect to an existing scan rather
       // than accidentally starting a duplicate run.
       const active = await refresh();
       if (active) {
+        setRunning(true);
         setError("A Lead Finder scan is already running. Reattached to the active scan.");
         return;
       }
 
-      // The server responds 202 as soon as the durable background run is accepted.
+      // Start polling only after the server has accepted the job. Otherwise an
+      // immediate poll can run before the new run row exists, conclude that no
+      // scan is active, and switch the UI back off while startup is still pending.
       const result = await ApiClient.runLeadFinder();
       if (result?.accepted === false) {
         throw new Error(result?.message || "The server did not accept the Lead Finder run.");
       }
       setProgress(result?.lastRun || { status: "RUNNING", target: summary?.target || 30, stats: { statusMessage: result?.message || "Scan accepted. Connecting to live progress…" } });
+      setRunning(true);
       await refresh();
     } catch (e) {
       setRunning(false);
       setError(e instanceof Error ? e.message : "Lead Finder could not start. Check the connection and try again.");
       await refresh().catch(() => undefined);
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -143,8 +150,8 @@ export const LeadFinderPage: React.FC = () => {
         <p>Discover fresh Nigerian real-estate prospects, qualify them against the DFQLABS standard, and feed only outreach-ready companies into the canonical CRM.</p>
       </div>
       <div className="lead-finder-actions">
-        <button className="btn-primary lead-finder-run" onClick={run} disabled={running}>
-          {running ? "Scanning the market…" : "Find today’s 30"}
+        <button className="btn-primary lead-finder-run" onClick={run} disabled={running || starting}>
+          {starting ? "Starting scan…" : running ? "Scanning the market…" : "Find today’s 30"}
         </button>
         {activeRole === "FOUNDER" && running && <button className="btn-secondary" onClick={async () => {
           if (!window.confirm("Cancel the active Lead Finder run? This keeps any already-qualified leads and only stops the current scan.")) return;
