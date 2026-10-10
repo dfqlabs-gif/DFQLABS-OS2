@@ -72,8 +72,7 @@ function scoreCandidate(input: { companyName: string; description: string; locat
   // requested industry/location here would make every result appear relevant by default.
   const evidenceText = normalize([input.companyName, input.description].join(" "));
   const industryFit = /(real estate|property|properties|realtor|realty|developer|development|homes|estate agent|housing|property management|brokerage)/i.test(evidenceText) ? 25 : 0;
-  const locationEvidence = normalize(input.location);
-  const locationFit = locationEvidence && /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta)/i.test(locationEvidence) ? 10 : 0;
+  const locationFit = /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta)/i.test(evidenceText) ? 10 : 0;
   const companyQuality = /(developer|luxury|premium|estate|group|holdings|investment|properties|realty|homes)/i.test(normalize(input.companyName)) ? 10 : 4;
   const digitalPresence = (input.website || input.instagram) ? 10 : 0;
   const contentOpportunity = input.instagram ? 10 : 5;
