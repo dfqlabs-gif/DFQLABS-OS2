@@ -176,7 +176,7 @@ export class LeadFinderService {
       if (error) throw new Error("Unable to recover stale Lead Finder run: " + error.message);
     }
     const alreadyMet = remaining === 0;
-    const stats = alreadyMet ? { target, created: 0, remainingBeforeRun: 0, statusMessage: "Today's qualified prospect target is already met." } : { target, remainingBeforeRun: remaining, discoveryProvider: "MULTI_SOURCE_INDEPENDENT", phase: "INITIALIZING", statusMessage: "Scan accepted. Preparing discovery providers..." };
+    const stats = alreadyMet ? { target, created: 0, remainingBeforeRun: 0, priorQualifiedToday: summary.newQualifiedToday, statusMessage: "Today's qualified prospect target is already met." } : { target, remainingBeforeRun: remaining, priorQualifiedToday: summary.newQualifiedToday, discoveryProvider: "MULTI_SOURCE_INDEPENDENT", phase: "INITIALIZING", statusMessage: "Scan accepted. Preparing discovery providers..." };
     const { data: run, error: runError } = await db.from("lead_finder_runs").insert({ run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id, status: alreadyMet ? "COMPLETED" : "RUNNING", stats, ...(alreadyMet ? { completed_at: new Date().toISOString() } : {}) }).select("*").single();
     if (runError || !run) throw new Error(runError?.message || "Unable to create durable Lead Finder run.");
     return { run, alreadyMet, target, remaining };
