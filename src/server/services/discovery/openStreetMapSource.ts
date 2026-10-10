@@ -31,7 +31,11 @@ interface OverpassResponse {
 export class OpenStreetMapDiscoverySource implements DiscoverySource {
   public readonly name = "OPENSTREETMAP";
 
-  private readonly endpoint = "https://overpass-api.de/api/interpreter";
+  private readonly endpoints = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.nchc.org.tw/api/interpreter"
+  ];
 
   public isConfigured(): boolean {
     return true; // Publicly accessible Overpass API endpoint
@@ -87,54 +91,58 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
       out body;
     `;
 
-    let response: Response;
-    try {
-      response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "DFQLABS-OS2-LeadFinder/2.0 (+https://dfqlabs.com.ng)"
-        },
-        body: `data=${encodeURIComponent(areaQuery)}`,
-        signal: AbortSignal.timeout(12000)
-      });
-    } catch {
-      // Use a coordinate fallback only for locations with explicit coordinates.
-      // Never silently redirect an unknown location to Abuja.
-      if (!coords) {
-        return {
-          sourceName: this.name,
-          attempted: true,
-          succeeded: false,
-          queriesCount: 1,
-          candidates: [],
-          errorCode: "OSM_LOCATION_UNSUPPORTED",
-          errorMessage: `No coordinate fallback is configured for "${location}". Area-name discovery was unavailable.`,
-          executionDurationMs: Date.now() - startTime
-        };
-      }
+    let response: Response | undefined;
+    let lastNetworkError: unknown;
+    let queriesCount = 0;
+    const request = async (endpoint: string, ql: string) => fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "DFQLABS-OS2-LeadFinder/2.0 (+https://dfqlabs.com.ng)"
+      },
+      body: `data=${encodeURIComponent(ql)}`,
+      signal: AbortSignal.timeout(12000)
+    });
+
+    // Try multiple independent public Overpass instances. Render may be unable
+    // to reach one host even when the others remain available.
+    for (const endpoint of this.endpoints) {
       try {
-        response = await fetch(this.endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "DFQLABS-OS2-LeadFinder/2.0 (+https://dfqlabs.com.ng)"
-          },
-          body: `data=${encodeURIComponent(query)}`,
-          signal: AbortSignal.timeout(12000)
-        });
-      } catch (innerError) {
-        return {
-          sourceName: this.name,
-          attempted: true,
-          succeeded: false,
-          queriesCount: 2,
-          candidates: [],
-          errorCode: "OSM_UNREACHABLE",
-          errorMessage: innerError instanceof Error ? innerError.message : String(innerError),
-          executionDurationMs: Date.now() - startTime
-        };
+        queriesCount++;
+        response = await request(endpoint, areaQuery);
+        break;
+      } catch (error) {
+        lastNetworkError = error;
       }
+    }
+
+    // If area-name lookup failed at the HTTP/network level, try known coordinates
+    // against alternate endpoints. Never redirect an unknown location to Abuja.
+    if (!response && coords) {
+      for (const endpoint of this.endpoints) {
+        try {
+          queriesCount++;
+          response = await request(endpoint, query);
+          break;
+        } catch (error) {
+          lastNetworkError = error;
+        }
+      }
+    }
+
+    if (!response) {
+      return {
+        sourceName: this.name,
+        attempted: true,
+        succeeded: false,
+        queriesCount,
+        candidates: [],
+        errorCode: coords ? "OSM_UNREACHABLE" : "OSM_LOCATION_UNSUPPORTED",
+        errorMessage: coords
+          ? `All configured Overpass endpoints were unreachable. Last error: ${lastNetworkError instanceof Error ? lastNetworkError.message : String(lastNetworkError || "unknown network error")}`
+          : `Area-name discovery failed and no coordinate fallback is configured for "${location}". Last error: ${lastNetworkError instanceof Error ? lastNetworkError.message : String(lastNetworkError || "unknown network error")}`,
+        executionDurationMs: Date.now() - startTime
+      };
     }
 
     if (!response.ok) {
