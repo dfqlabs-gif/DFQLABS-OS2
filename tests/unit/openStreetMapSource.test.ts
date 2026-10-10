@@ -40,14 +40,14 @@ describe("OpenStreetMapDiscoverySource", () => {
   });
   it("does not fall back to Abuja coordinates for an unsupported location", async () => {
     const source = new OpenStreetMapDiscoverySource();
-    const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValueOnce(new Error("network unavailable"));
+    const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new Error("network unavailable"));
 
     const result = await source.discoverCandidates("Unmapped Nigerian Town", "real estate", 5);
 
     expect(result.succeeded).toBe(false);
     expect(result.errorCode).toBe("OSM_LOCATION_UNSUPPORTED");
     expect(result.errorMessage).toContain("Unmapped Nigerian Town");
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
     fetchSpy.mockRestore();
   });
 
