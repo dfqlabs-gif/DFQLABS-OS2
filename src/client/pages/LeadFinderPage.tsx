@@ -265,6 +265,19 @@ export const LeadFinderPage: React.FC = () => {
         )}
       </div>
 
+      {latestRun?.status === "FAILED" && (
+        <div className="lead-finder-error">
+          <strong>{latestRun.stats?.failureCode === "ALL_PROVIDERS_UNAVAILABLE" ? "No discovery provider was available." : "Lead Finder did not discover any candidates."}</strong>
+          <div>{latestRun.stats?.statusMessage || "Review the provider diagnostics and server logs before retrying."}</div>
+        </div>
+      )}
+      {latestRun?.status === "PARTIAL" && (
+        <div className="finder-diagnostics-note">
+          <strong>Partial scan: the qualified-prospect target was not reached.</strong>
+          <span>{latestRun.stats?.statusMessage || "Review the source and qualification diagnostics below."}</span>
+        </div>
+      )}
+
       {activeRole === "FOUNDER" && latestRun && latestRun.status !== "RUNNING" && (
         <section className="card finder-diagnostics">
           <div className="eyebrow">SOURCE & QUALIFICATION DIAGNOSTICS</div>
