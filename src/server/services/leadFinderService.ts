@@ -337,7 +337,15 @@ export class LeadFinderService {
       }
     }
 
+    const anySourceSucceeded = Object.values(sourceStats).some((result) => result.succeeded);
     const finalStatus = created.length >= remaining ? "COMPLETED" : found > 0 ? "PARTIAL" : "FAILED";
+    const statusMessage = finalStatus === "COMPLETED"
+      ? "Qualified prospect target reached."
+      : found > 0
+        ? `Discovery finished with ${created.length} qualified prospects against the remaining target of ${remaining}.`
+        : anySourceSucceeded
+          ? "Discovery sources responded but returned no candidates. Try another location or run again later."
+          : "All configured discovery sources failed or were unavailable. Review provider diagnostics before retrying.";
 
     await db.from("lead_finder_runs").update({
       status: finalStatus,
@@ -350,7 +358,8 @@ export class LeadFinderService {
         created: created.length,
         rejectionReasons,
         sourceStats,
-        statusMessage: finalStatus === "COMPLETED" ? "Target reached." : "Multi-source discovery completed."
+        failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : undefined,
+        statusMessage
       },
       completed_at: new Date().toISOString()
     }).eq("id", run.id);
