@@ -150,7 +150,7 @@ export const LeadFinderPage: React.FC = () => {
               } catch (e) {
                 setError(e instanceof Error ? e.message : "Reset failed.");
               }
-            }} disabled={running}>Reset Today</button>
+            }} disabled={running}>Clear Run History</button>
           )}
         </div>
 
