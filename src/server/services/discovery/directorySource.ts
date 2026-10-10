@@ -43,10 +43,10 @@ export class DirectoryDiscoverySource implements DiscoverySource {
         .replace(/&#39;/g, "'")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
-        .replace(/\\s+/g, " ")
+        .replace(/\s+/g, " ")
         .trim();
-      const links = [...html.matchAll(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/gi)];
-      const snippets = [...html.matchAll(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\\s\\S]*?)<\\/a>/gi)];
+      const links = [...html.matchAll(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)];
+      const snippets = [...html.matchAll(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)];
 
       for (let i = 0; i < links.length && candidates.length < maxResults; i++) {
         const linkMatch = links[i];
@@ -55,7 +55,7 @@ export class DirectoryDiscoverySource implements DiscoverySource {
         let url = (linkMatch[1] || "").replace(/&amp;/g, "&");
         try {
           const parsed = new URL(url.startsWith("//") ? `https:${url}` : url);
-          if (/duckduckgo\\.com$/i.test(parsed.hostname) && parsed.searchParams.has("uddg")) {
+          if (/duckduckgo\.com$/i.test(parsed.hostname) && parsed.searchParams.has("uddg")) {
             url = parsed.searchParams.get("uddg") || "";
           } else if (url.startsWith("//")) {
             url = `https:${url}`;
@@ -63,12 +63,12 @@ export class DirectoryDiscoverySource implements DiscoverySource {
         } catch {
           continue;
         }
-        if (!title || !url || !/^https?:\\/\\//i.test(url)) continue;
+        if (!title || !url || !/^https?:\/\//i.test(url)) continue;
 
         const text = `${title} ${snippet}`;
-        const phoneMatch = text.match(/(?:\\+?234|0)[789][01]\\d{8}\\b/);
+        const phoneMatch = text.match(/(?:\+?234|0)[789][01]\d{8}\b/);
         candidates.push({
-          companyName: title.split(/\\s[|–—-]\\s/)[0].trim(),
+          companyName: title.split(/\s[|–—-]\s/)[0].trim(),
           businessType: industry,
           location,
           description: snippet,
