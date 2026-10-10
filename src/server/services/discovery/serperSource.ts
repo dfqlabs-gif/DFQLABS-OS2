@@ -4,6 +4,7 @@ type SearchResult = { title?: string; link?: string; snippet?: string };
 
 export class SerperDiscoverySource implements DiscoverySource {
   public readonly name = "SERPER";
+  private creditsExhausted = false;
 
   public isConfigured(): boolean {
     return Boolean(process.env.SERPER_API_KEY?.trim());
@@ -70,6 +71,21 @@ export class SerperDiscoverySource implements DiscoverySource {
       };
     }
 
+    // Credit exhaustion is a provider-level state, not a per-location error.
+    // Remember it for this scan so we don't issue repeated guaranteed-to-fail calls.
+    if (this.creditsExhausted) {
+      return {
+        sourceName: this.name,
+        attempted: false,
+        succeeded: false,
+        queriesCount: 0,
+        candidates: [],
+        errorCode: "SERPER_CREDITS_EXHAUSTED",
+        errorMessage: "Serper credits were already reported exhausted during this scan; further requests were skipped.",
+        executionDurationMs: Date.now() - startTime
+      };
+    }
+
     const queryTemplates = [
       `"${location}" Nigeria "${industry}" company official website contact phone`,
       `site:instagram.com "${location}" Nigeria ("${industry}" OR property OR developer)`
@@ -116,6 +132,7 @@ export class SerperDiscoverySource implements DiscoverySource {
       };
     } catch (error) {
       const isExhausted = this.isSerperCreditExhausted(error);
+      if (isExhausted) this.creditsExhausted = true;
       return {
         sourceName: this.name,
         attempted: true,
