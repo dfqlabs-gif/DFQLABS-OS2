@@ -140,7 +140,7 @@ export const LeadFinderPage: React.FC = () => {
           )}
           {activeRole === "FOUNDER" && (
             <button className="btn-secondary" onClick={async () => {
-              if (!window.confirm("Reset today’s Lead Finder batch?")) return;
+              if (!window.confirm("Clear today’s Lead Finder run history? Existing CRM prospects will be preserved and will continue to count toward today’s target. This does not reset target progress.")) return;
               try {
                 setError("");
                 await ApiClient.resetLeadFinderToday();
