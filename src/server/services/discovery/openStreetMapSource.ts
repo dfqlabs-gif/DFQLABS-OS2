@@ -91,7 +91,6 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
       out body;
     `;
 
-    let response: Response | undefined;
     let lastNetworkError: unknown;
     let queriesCount = 0;
     const request = async (endpoint: string, ql: string) => fetch(endpoint, {
@@ -129,7 +128,7 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
     // avoids spending up to six requests per location on an area lookup plus a
     // coordinate fallback, which made scans unnecessarily long and fragile.
     // Unknown locations use area-name discovery only; never redirect them to Abuja.
-    response = coords
+    const response = coords
       ? await requestAcrossEndpoints(query)
       : await requestAcrossEndpoints(areaQuery);
 

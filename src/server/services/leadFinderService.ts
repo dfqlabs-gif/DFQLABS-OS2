@@ -183,7 +183,6 @@ export class LeadFinderService {
     const remaining = Math.max(0, target - summary.newQualifiedToday);
     if (remaining === 0 && !existingRunId) return { ...summary, created: [], message: "Today's qualified prospect target is already met." };
 
-    const today = new Date().toISOString().slice(0, 10);
     let run: any;
     if (existingRunId) {
       const { data, error } = await db.from("lead_finder_runs").select("*").eq("id", existingRunId).eq("status", "RUNNING").single();
