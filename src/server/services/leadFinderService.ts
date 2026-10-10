@@ -9,6 +9,7 @@ import { DiscoverySource, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 
 const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
+const SUPPLEMENTAL_NIGERIAN_MARKETS = ["Lagos", "Port Harcourt", "Ibadan", "Enugu", "Owerri", "Warri", "Uyo", "Calabar"];
 const DEFAULT_INDUSTRIES = ["real estate developer", "luxury realtor", "real estate agency", "property investment company"];
 
 interface LeadFinderSettings {
@@ -49,17 +50,24 @@ function domain(value?: string): string {
 }
 
 function isGenericCompanyName(value: string): boolean {
-  const name = normalize(value)
+  const raw = normalize(value);
+  const name = raw
     .replace(/[|–—-]/g, " ")
     .replace(/\b(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin city|akwa ibom)\b/g, " ")
     .replace(/\b(limited|ltd|plc|nigeria)\b/g, " ")
     .replace(/\bin\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!name || name.length < 4) return true;
+
+  if (!name || name.length < 4 || name.length > 110) return true;
+  // Search results often return a listing title or a seller's sentence rather than a company identity.
+  if (/^(?:please contact|contact|call|whatsapp|we are|we're|we offer|we deal|we are into|for more information|buy|sell|rent|looking for)\b/i.test(raw)) return true;
+  if (/^(?:house|land|plot|apartment|flat|duplex|property|properties|home|building)\s+(?:for sale|for rent|to let|available)\b/i.test(raw)) return true;
+  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent)\b/i.test(raw)) return true;
+  if (/\b(?:0[789][01]\d{8}|\+?234[789][01]\d{8})\b/.test(raw)) return true;
+  if (/[!?]/.test(raw) || /\.\s+[A-Z]/.test(value)) return true;
   return /^(?:real estate|property|properties|realty|realtor|housing|estate|luxury real estate|real estate company|property company|real estate agency|property agency|real estate developer|property developer|real estate investment company|real estate companies|property companies|real estate agencies|property agencies|real estate developers|best real estate companies|top real estate companies|unknown real estate company)(?: in .*)?$/.test(name);
 }
-
 function qualityFor(score: number): Candidate["quality"] {
   if (score >= 90) return "EXCELLENT";
   if (score >= 80) return "HIGH";
@@ -157,7 +165,7 @@ export class LeadFinderService {
     const settings = await this.getSettings();
     const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
     const summary = await this.getTodaySummary(user);
-    const remaining = Math.max(0, target - summary.newQualifiedToday);
+    const remaining = target; // A manual scan must attempt its full requested batch; summary counts must not silently shrink it.
     const today = new Date().toISOString().slice(0, 10);
     const { data: running, error: runningError } = await db.from("lead_finder_runs").select("id,created_at").eq("run_date", today).eq("status", "RUNNING").order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (runningError) throw new Error("Unable to check active Lead Finder runs: " + runningError.message);
@@ -180,7 +188,7 @@ export class LeadFinderService {
 
     const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
     const summary = await this.getTodaySummary(user);
-    const remaining = Math.max(0, target - summary.newQualifiedToday);
+    const remaining = target; // Scan-level target, independent of stale or misclassified daily summary counts.
     if (remaining === 0 && !existingRunId) return { ...summary, created: [], message: "Today's qualified prospect target is already met." };
 
     let run: any;
@@ -201,9 +209,12 @@ export class LeadFinderService {
 
     const sources: DiscoverySource[] = [
       new SerperDiscoverySource(),
-      new OpenStreetMapDiscoverySource(),
-      new DirectoryDiscoverySource()
+      // Public directory search can yield contactable prospects without paid Serper credits.
+      // Run it before OSM, whose public records often lack phone numbers and can be slow.
+      new DirectoryDiscoverySource(),
+      new OpenStreetMapDiscoverySource()
     ];
+    const discoveryLocations = [...new Set([...settings.locations, ...SUPPLEMENTAL_NIGERIAN_MARKETS])];
 
     const existing = await this.existingIdentifiers();
     const seen = new Set<string>();
@@ -218,14 +229,15 @@ export class LeadFinderService {
     for (const source of sources) {
       if (created.length >= remaining) break;
 
-      for (const location of settings.locations) {
+      const locationsForSource = source.name === "OPENSTREETMAP" ? settings.locations : discoveryLocations;
+      for (const location of locationsForSource) {
         if (created.length >= remaining) break;
 
         const { error: progressStartError } = await db.from("lead_finder_runs").update({
           stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
         }).eq("id", run.id).eq("status", "RUNNING");
         if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
-        const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 10);
+        const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 40);
         const priorStats = sourceStats[source.name];
         sourceStats[source.name] = priorStats ? {
           sourceName: source.name,
