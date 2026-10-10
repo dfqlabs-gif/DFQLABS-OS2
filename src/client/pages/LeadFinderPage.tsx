@@ -30,8 +30,6 @@ export const LeadFinderPage: React.FC = () => {
     refresh().catch((e) => setError(e.message));
   }, [refresh]);
 
-  // The scan is server-owned. If the page is unmounted or the user switches tabs,
-  // the server run continues; when this page mounts again we reattach to that run.
   React.useEffect(() => {
     if (!running || starting) return;
     let cancelled = false;
@@ -47,10 +45,6 @@ export const LeadFinderPage: React.FC = () => {
         setProgress(active);
 
         if (!active) {
-          // The API responds as soon as it accepts the job, but runDaily first
-          // awaits database/settings calls before inserting the RUNNING row.
-          // Treating one empty poll as completion made the button turn off after
-          // ~2–3 seconds, allowing repeated clicks and duplicate start attempts.
           const acceptedAt = scanAcceptedAt;
           const recentRun = acceptedAt === null ? null : runs.find((r: any) =>
             r.created_at && new Date(r.created_at).getTime() >= acceptedAt
@@ -65,15 +59,8 @@ export const LeadFinderPage: React.FC = () => {
             setProgress({
               status: "RUNNING",
               target: summary?.target || 30,
-              stats: { statusMessage: "Scan accepted. Waiting for the server to initialise the run…" }
+              stats: { statusMessage: "Scan accepted. Waiting for multi-source execution..." }
             });
-            return;
-          }
-          if (acceptedAt !== null) {
-            setRunning(false);
-            setScanAcceptedAt(null);
-            setError("The server accepted the scan request, but no active run appeared within 90 seconds. Check the latest run status and Render logs before trying again.");
-            await refresh();
             return;
           }
           setRunning(false);
@@ -82,7 +69,7 @@ export const LeadFinderPage: React.FC = () => {
           setScanAcceptedAt(null);
         }
       } catch {
-        // Keep the active scan UI alive through transient polling failures.
+        // Keep active scan UI alive through transient polling failures
       }
     };
 
@@ -95,204 +82,175 @@ export const LeadFinderPage: React.FC = () => {
   }, [running, starting, refresh, scanAcceptedAt, summary?.target]);
 
   const run = async () => {
-    // Catch every awaited operation, including the preflight refresh. Previously
-    // refresh() ran outside try/catch, so a summary/history API failure made the
-    // button appear completely dead and emitted only an unhandled rejection.
     if (running || starting) return;
     setError("");
     setStarting(true);
     try {
-      // The database remains authoritative: reconnect to an existing scan rather
-      // than accidentally starting a duplicate run.
       const active = await refresh();
       if (active) {
         setRunning(true);
-        setError("A Lead Finder scan is already running. Reattached to the active scan.");
+        setError("A Lead Finder scan is already running. Reattached to active run.");
         return;
       }
 
-      // Start polling only after the server has accepted the job. Otherwise an
-      // immediate poll can run before the new run row exists, conclude that no
-      // scan is active, and switch the UI back off while startup is still pending.
       const result = await ApiClient.runLeadFinder();
       if (result?.accepted === false) {
         throw new Error(result?.message || "The server did not accept the Lead Finder run.");
       }
       setScanAcceptedAt(Date.now());
-      setProgress(result?.lastRun || { status: "RUNNING", target: summary?.target || 30, stats: { statusMessage: result?.message || "Scan accepted. Connecting to live progress…" } });
+      setProgress(result?.lastRun || { status: "RUNNING", target: summary?.target || 30, stats: { statusMessage: "Multi-source scan started..." } });
       setRunning(true);
-      // Do not immediately refresh: runDaily performs asynchronous preflight work
-      // before it inserts the RUNNING row. Polling now has a 90-second startup
-      // grace period and will attach as soon as the persisted row appears.
     } catch (e) {
       setRunning(false);
       setScanAcceptedAt(null);
-      setError(e instanceof Error ? e.message : "Lead Finder could not start. Check the connection and try again.");
+      setError(e instanceof Error ? e.message : "Lead Finder could not start.");
       await refresh().catch(() => undefined);
     } finally {
       setStarting(false);
     }
   };
 
-  // Keep the phone awake only while a scan is actively running. On mobile
-  // browsers, turning the display off can suspend polling; if the host is an
-  // idle/sleeping web service, that can interrupt a long background run.
-  React.useEffect(() => {
-    if (!running) return;
-    let lock: { release: () => Promise<void>; addEventListener?: (type: "release", listener: () => void) => void } | null = null;
-    let disposed = false;
-    const requestWakeLock = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const wakeLockApi = (navigator as Navigator & {
-          wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void>; addEventListener?: (type: "release", listener: () => void) => void }> }
-        }).wakeLock;
-        if (!wakeLockApi || lock) return;
-        lock = await wakeLockApi.request("screen");
-        if (disposed && lock) {
-          await lock.release().catch(() => undefined);
-          lock = null;
-        }
-        if (lock) {
-          lock.addEventListener?.("release", () => { lock = null; });
-        }
-      } catch {
-        // Unsupported browsers or power-saving policies may deny wake locks.
-      }
-    };
-    const onVisibilityChange = () => { if (document.visibilityState === "visible") void requestWakeLock(); };
-    void requestWakeLock();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      disposed = true;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      if (lock) void lock.release().catch(() => undefined);
-      lock = null;
-    };
-  }, [running]);
-
   const latestRun = history[0] || null;
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
+  const sourceStats = latestRun?.stats?.sourceStats || {};
+
+  const serperExhausted = Object.values(sourceStats).some((s: any) => s.errorCode === "SERPER_CREDITS_EXHAUSTED");
 
   const pct = summary
     ? Math.min(100, Math.round((summary.newQualifiedToday / Math.max(1, summary.target)) * 100))
     : 0;
 
-  return <section className="lead-finder-page">
-    <div className="lead-finder-hero">
-      <div>
-        <div className="eyebrow"><span className="finder-live-dot" /> DFQLABS / PROSPECTING INTELLIGENCE</div>
-        <h1>Find today’s next 30<span className="hero-period">.</span></h1>
-        <p>Discover fresh Nigerian real-estate prospects, qualify them against the DFQLABS standard, and feed only outreach-ready companies into the canonical CRM.</p>
-      </div>
-      <div className="lead-finder-actions">
-        <button className="btn-primary lead-finder-run" onClick={run} disabled={running || starting}>
-          {starting ? "Starting scan…" : running ? "Scanning the market…" : "Find today’s 30"}
-        </button>
-        {activeRole === "FOUNDER" && running && <button className="btn-secondary" onClick={async () => {
-          if (!window.confirm("Cancel the active Lead Finder run? This keeps any already-qualified leads and only stops the current scan.")) return;
-          try { setError(""); await ApiClient.cancelLeadFinder(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "Cancellation failed."); }
-        }}>Cancel Scan</button>}
-        {activeRole === "FOUNDER" && <button className="btn-secondary" onClick={async () => {
-          if (!window.confirm("Reset today’s Lead Finder batch? This removes only today’s automated Lead Finder prospects and run history.")) return;
-          try {
-            setError("");
-            await ApiClient.resetLeadFinderToday();
-            setProgress(null);
-            setRunning(false);
-            await refresh();
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Reset failed.");
-          }
-        }} disabled={running}>Reset Today</button>}
+  return (
+    <section className="lead-finder-page">
+      <div className="lead-finder-hero">
+        <div>
+          <div className="eyebrow"><span className="finder-live-dot" /> DFQLABS / PROSPECTING INTELLIGENCE</div>
+          <h1>Find today’s next 30<span className="hero-period">.</span></h1>
+          <p>Discover fresh Nigerian real-estate prospects across Serper, OpenStreetMap, and Business Directories, qualify them, and save outreach-ready candidates to the CRM.</p>
+        </div>
+        <div className="lead-finder-actions">
+          <button className="btn-primary lead-finder-run" onClick={run} disabled={running || starting}>
+            {starting ? "Starting scan…" : running ? "Scanning markets…" : "Find today’s 30"}
+          </button>
+          {activeRole === "FOUNDER" && running && (
+            <button className="btn-secondary" onClick={async () => {
+              if (!window.confirm("Cancel the active Lead Finder run?")) return;
+              try { setError(""); await ApiClient.cancelLeadFinder(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "Cancellation failed."); }
+            }}>Cancel Scan</button>
+          )}
+          {activeRole === "FOUNDER" && (
+            <button className="btn-secondary" onClick={async () => {
+              if (!window.confirm("Reset today’s Lead Finder batch?")) return;
+              try {
+                setError("");
+                await ApiClient.resetLeadFinderToday();
+                setProgress(null);
+                setRunning(false);
+                await refresh();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Reset failed.");
+              }
+            }} disabled={running}>Reset Today</button>
+          )}
+        </div>
+
+        {running && progress && (
+          <div className="lead-finder-live-progress">
+            <div className="live-progress-head">
+              <strong>{progress.stats?.statusMessage || "Scanning multi-source providers..."}</strong>
+              <span>{progress.stats?.created || 0} / {progress.target || 30} qualified</span>
+            </div>
+            <div className="finder-track">
+              <span style={{width: `${Math.min(100, Math.round(((progress.stats?.created || 0) / Math.max(1, progress.target || 30)) * 100))}%`}} />
+            </div>
+            <div className="finder-meta">
+              <span>Candidates: {progress.stats?.found || 0} · Rejected: {progress.stats?.rejected || 0} · Duplicates: {progress.stats?.duplicate || 0}</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {running && progress && (
-        <div className="lead-finder-live-progress">
-          <div className="live-progress-head">
-            <strong>{progress.stats?.statusMessage || "Scanning the market…"}</strong>
-            <span>{progress.stats?.created || 0} / {progress.target || 30} qualified</span>
-          </div>
-          <div className="finder-track">
-            <span style={{width: `${Math.min(100, Math.round(((progress.stats?.created || 0) / Math.max(1, progress.target || 30)) * 100))}%`}} />
-          </div>
-          <div className="finder-meta">
-            <span>Queries {progress.stats?.providerQueries || 0} / {progress.stats?.queriesTotal || "…"}</span>
-            <span>Found {progress.stats?.found || 0} · Rejected {progress.stats?.rejected || 0} · Duplicates {progress.stats?.duplicate || 0}</span>
-          </div>
+      {serperExhausted && (
+        <div className="lead-finder-error" style={{ background: "rgba(245, 158, 11, 0.15)", borderColor: "#F59E0B", color: "#F59E0B" }}>
+          ⚠️ Serper search provider credits are exhausted. The engine is continuing discovery using OpenStreetMap and public directories.
         </div>
       )}
-    </div>
 
-    {error && <div className="lead-finder-error">{error}</div>}
+      {error && <div className="lead-finder-error">{error}</div>}
 
-    <div className="lead-finder-progress card">
-      <div className="finder-progress-top">
-        <div><span className="stat-label">Daily acquisition target</span><strong>{summary?.newQualifiedToday ?? 0}<small> / {summary?.target ?? 30}</small></strong></div>
-        <span className="finder-status">{summary?.status === "TARGET_MET" ? "TARGET MET" : "ACTIVE"}</span>
-      </div>
-      <div className="finder-track"><span style={{width:`${pct}%`}} /></div>
-      <div className="finder-meta"><span>{summary?.remaining ?? 30} qualified prospects remaining today</span><span>Minimum score {summary?.minimumScore ?? 70}</span></div>
-    </div>
-
-    <div className="finder-grid">
-      <div className="card finder-feature">
-        <div className="finder-orbit"><span>DFQ</span></div>
-        <div><div className="eyebrow">AUTOMATED DISCOVERY</div><h2>Search → qualify → save</h2><p>The engine searches configured markets, enriches public company signals, blocks existing CRM identities, scores fit, and persists qualified prospects. It intentionally over-discovers so 30 means 30 usable prospects—not 30 raw results.</p></div>
-      </div>
-      <div className="card">
-        <div className="stat-label">Configured markets</div>
-        <div className="finder-tags">{(summary?.locations || []).map((x:string)=><span key={x}>{x}</span>)}</div>
-        <div className="stat-label finder-label-gap">Industries</div>
-        <div className="finder-tags">{(summary?.industries || []).slice(0,4).map((x:string)=><span key={x}>{x}</span>)}</div>
-      </div>
-    </div>
-
-    <div className="card finder-history">
-      <div className="finder-history-head">
-        <div><div className="eyebrow">PROSPECTING HISTORY</div><h2>Daily acquisition runs</h2></div>
-        <span>{summary?.lastRun ? new Date(summary.lastRun.created_at).toLocaleString() : "No runs yet"}</span>
-      </div>
-      {history.length ? <div className="finder-history-list">{history.map((r:any)=><div className="finder-run-row" key={r.id}><span className="run-date">{r.run_date}</span><strong>{r.qualified_count} qualified</strong><span>{r.found_count} candidates · {r.duplicate_count} duplicates</span><b className={r.status === "COMPLETED" ? "ok" : ""}>{r.status}</b></div>)}</div> : <div className="empty-state"><strong>No prospecting runs yet.</strong><span>Run the engine to build today’s fresh pipeline.</span></div>}
-      {latestRun?.status === "PARTIAL" && <div className="finder-diagnostics-note"><strong>Partial means the scan finished without reaching its qualified-lead target.</strong><span>{latestRun.stats?.statusMessage || "The configured discovery budget ended before the target was reached."} Raw candidates are not the same as verified, outreach-ready prospects.</span></div>}
-      {latestRun?.status === "FAILED" && <div className="finder-diagnostics-note"><strong>{latestRun.stats?.failureCode === "SERPER_CREDITS_EXHAUSTED" ? "Search provider credits exhausted — the scan cannot continue." : "The scan failed before normal completion."}</strong><span>{latestRun.stats?.statusMessage || latestRun.stats?.error || "Check provider configuration and the server logs, then retry."}{latestRun.stats?.failureCode === "SERPER_CREDITS_EXHAUSTED" ? " Open your Serper account and add credits or configure another funded search provider in Render. Do not keep retrying until provider credits are available." : ""}</span></div>}
-    </div>
-
-    {activeRole === "FOUNDER" && latestRun && latestRun.status !== "RUNNING" && (
-      <section className="card finder-diagnostics">
-        <div className="eyebrow">RUN DIAGNOSTICS</div>
-        <h3>Lead quality &amp; verification report</h3>
-        <p>Search-result counts are not qualified leads. This report shows why candidates were rejected, so source coverage and verification quality can be improved without weakening the phone and identity checks.</p>
-        <div className="diagnostic-grid">
-          <div><span>Raw candidates reviewed</span><strong>{latestRun.found_count ?? 0}</strong></div>
-          <div><span>Saved as qualified</span><strong>{latestRun.qualified_count ?? 0}</strong></div>
-          <div><span>Generic / non-company names</span><strong>{diagnostics.genericCompanyName ?? 0}</strong></div>
-          <div><span>Official identity / phone not verified</span><strong>{diagnostics.officialWebsiteNotVerified ?? "Not recorded"}</strong></div>
-          <div><span>Weak identity match</span><strong>{diagnostics.weakIdentityMatch ?? "Not recorded"}</strong></div>
-          <div><span>Invalid Nigerian mobile number</span><strong>{diagnostics.invalidNigeriaPhone ?? "Not recorded"}</strong></div>
-          <div><span>Below minimum score</span><strong>{diagnostics.belowMinimumScore ?? "Not recorded"}</strong></div>
-          <div><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? 0}</strong></div>
-          <div><span>Save errors</span><strong>{diagnostics.persistenceError ?? 0}</strong></div>
+      <div className="lead-finder-progress card">
+        <div className="finder-progress-top">
+          <div><span className="stat-label">Daily acquisition target</span><strong>{summary?.newQualifiedToday ?? 0}<small> / {summary?.target ?? 30}</small></strong></div>
+          <span className="finder-status">{summary?.status === "TARGET_MET" ? "TARGET MET" : "ACTIVE"}</span>
         </div>
-        <div className="finder-meta">
-          <span>Queries used: {latestRun.provider_queries ?? latestRun.stats?.providerQueries ?? 0}</span>
-          <span>Verification searches: {latestRun.stats?.verificationSearches ?? "Not recorded"}</span>
-          <span>Result: {latestRun.status}</span>
+        <div className="finder-track"><span style={{width:`${pct}%`}} /></div>
+        <div className="finder-meta"><span>{summary?.remaining ?? 30} qualified prospects remaining today</span><span>Minimum score {summary?.minimumScore ?? 70}</span></div>
+      </div>
+
+      <div className="finder-grid">
+        <div className="card finder-feature">
+          <div className="finder-orbit"><span>DFQ</span></div>
+          <div>
+            <div className="eyebrow">MULTI-SOURCE DISCOVERY</div>
+            <h2>Serper + OpenStreetMap + Public Directories</h2>
+            <p>Independent discovery sources query targeted locations, validate Nigerian mobile phone formats (+234), verify company identities, filter duplicate records, and promote verified prospects into the CRM.</p>
+          </div>
         </div>
-        {latestRun.stats?.sourceStats && <div className="finder-history-list source-yield-list">
-          <strong>Source performance</strong>
-          {Object.entries(latestRun.stats.sourceStats as Record<string, {queries:number; candidates:number; qualified:number}>).map(([source, stats]) =>
-            <div className="finder-run-row" key={source}>
-              <span className="run-date">{source.replaceAll("_", " ")}</span>
-              <span>{stats.queries} searches</span>
-              <span>{stats.candidates} candidates</span>
-              <strong>{stats.qualified} qualified</strong>
+        <div className="card">
+          <div className="stat-label">Configured markets</div>
+          <div className="finder-tags">{(summary?.locations || []).map((x:string)=><span key={x}>{x}</span>)}</div>
+          <div className="stat-label finder-label-gap">Industries</div>
+          <div className="finder-tags">{(summary?.industries || []).slice(0,4).map((x:string)=><span key={x}>{x}</span>)}</div>
+        </div>
+      </div>
+
+      <div className="card finder-history">
+        <div className="finder-history-head">
+          <div><div className="eyebrow">PROSPECTING HISTORY</div><h2>Daily acquisition runs</h2></div>
+          <span>{summary?.lastRun ? new Date(summary.lastRun.created_at).toLocaleString() : "No runs yet"}</span>
+        </div>
+        {history.length ? (
+          <div className="finder-history-list">
+            {history.map((r:any)=>(
+              <div className="finder-run-row" key={r.id}>
+                <span className="run-date">{r.run_date}</span>
+                <strong>{r.qualified_count} qualified</strong>
+                <span>{r.found_count} candidates · {r.duplicate_count} duplicates</span>
+                <b className={r.status === "COMPLETED" ? "ok" : ""}>{r.status}</b>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state"><strong>No prospecting runs yet.</strong><span>Run the engine to build today’s pipeline.</span></div>
+        )}
+      </div>
+
+      {activeRole === "FOUNDER" && latestRun && latestRun.status !== "RUNNING" && (
+        <section className="card finder-diagnostics">
+          <div className="eyebrow">SOURCE & QUALIFICATION DIAGNOSTICS</div>
+          <h3>Multi-Source Yield Report</h3>
+          <div className="diagnostic-grid">
+            <div><span>Candidates reviewed</span><strong>{latestRun.found_count ?? 0}</strong></div>
+            <div><span>Saved as qualified</span><strong>{latestRun.qualified_count ?? 0}</strong></div>
+            <div><span>Generic names rejected</span><strong>{diagnostics.genericCompanyName ?? 0}</strong></div>
+            <div><span>Invalid Nigerian phone</span><strong>{diagnostics.invalidNigeriaPhone ?? 0}</strong></div>
+            <div><span>Below min score</span><strong>{diagnostics.belowMinimumScore ?? 0}</strong></div>
+            <div><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? 0}</strong></div>
+          </div>
+          {Object.keys(sourceStats).length > 0 && (
+            <div className="finder-history-list source-yield-list" style={{ marginTop: "1rem" }}>
+              <strong>Provider Status & Execution</strong>
+              {Object.entries(sourceStats).map(([src, res]: [string, any]) => (
+                <div className="finder-run-row" key={src}>
+                  <span className="run-date">{src}</span>
+                  <span>{res.succeeded ? "✅ Succeeded" : `❌ ${res.errorCode || "Failed"}`}</span>
+                  <strong>{res.candidates?.length || 0} candidates</strong>
+                </div>
+              ))}
             </div>
           )}
-        </div>}
-      </section>
-    )}
-
-    {activeRole === "FOUNDER" && <p className="finder-footnote">Founder controls can configure the daily target, minimum quality score, locations, industries, and provider credentials. Outreach remains human-approved.</p>}
-  </section>;
+        </section>
+      )}
+    </section>
+  );
 };
