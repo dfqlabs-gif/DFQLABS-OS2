@@ -63,6 +63,13 @@ export const LeadFinderPage: React.FC = () => {
             });
             return;
           }
+          if (acceptedAt !== null) {
+            setRunning(false);
+            setScanAcceptedAt(null);
+            setError("The server accepted the scan request, but no active run appeared within 90 seconds. Check the latest run status and Render logs before trying again.");
+            await refresh();
+            return;
+          }
           setRunning(false);
           await refresh();
         } else {
@@ -109,6 +116,39 @@ export const LeadFinderPage: React.FC = () => {
       setStarting(false);
     }
   };
+
+  // Keep the phone awake only while a scan is actively running.
+  React.useEffect(() => {
+    if (!running) return;
+    let lock: { release: () => Promise<void>; addEventListener?: (type: "release", listener: () => void) => void } | null = null;
+    let disposed = false;
+    const requestWakeLock = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const wakeLockApi = (navigator as Navigator & {
+          wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void>; addEventListener?: (type: "release", listener: () => void) => void }> }
+        }).wakeLock;
+        if (!wakeLockApi || lock) return;
+        lock = await wakeLockApi.request("screen");
+        if (disposed && lock) {
+          await lock.release().catch(() => undefined);
+          lock = null;
+        }
+        if (lock) lock.addEventListener?.("release", () => { lock = null; });
+      } catch {
+        // Wake Lock is optional and may be unavailable on some browsers.
+      }
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === "visible") void requestWakeLock(); };
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (lock) void lock.release().catch(() => undefined);
+      lock = null;
+    };
+  }, [running]);
 
   const latestRun = history[0] || null;
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
