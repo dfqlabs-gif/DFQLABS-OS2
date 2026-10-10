@@ -106,14 +106,28 @@ export class SerperDiscoverySource implements DiscoverySource {
           const text = `${res.title} ${res.snippet || ""}`;
           const phoneMatch = text.match(/(?:\+?234|0)[789][01]\d{8}\b/);
 
+          let host = "";
+          try {
+            host = new URL(res.link).hostname.toLowerCase().replace(/^www\./, "");
+          } catch {
+            continue;
+          }
+          const isInstagram = host === "instagram.com" || host.endsWith(".instagram.com");
+          const isFacebook = host === "facebook.com" || host.endsWith(".facebook.com");
+          const isLinkedIn = host === "linkedin.com" || host.endsWith(".linkedin.com");
+          const isDirectoryOrSearch = /(?:businesslist|vconnect|finelib|duckduckgo|google|bing|yelp)\./i.test(host);
+          const website = !isInstagram && !isFacebook && !isLinkedIn && !isDirectoryOrSearch ? res.link : undefined;
+
           candidates.push({
             companyName: res.title.split(/\s[|–—-]\s/)[0].trim(),
             businessType: industry,
             location,
             description: res.snippet || "",
             phone: phoneMatch ? phoneMatch[0] : undefined,
-            website: !res.link.includes("instagram.com") ? res.link : undefined,
-            instagram: res.link.includes("instagram.com") ? res.link : undefined,
+            website,
+            instagram: isInstagram ? res.link : undefined,
+            facebook: isFacebook ? res.link : undefined,
+            linkedin: isLinkedIn ? res.link : undefined,
             sourceFamily: "SERPER",
             sourceUrl: res.link,
             sourceTitle: res.title,
