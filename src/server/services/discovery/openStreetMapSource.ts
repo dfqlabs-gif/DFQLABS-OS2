@@ -37,7 +37,7 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
     return true; // Publicly accessible Overpass API endpoint
   }
 
-  private getCoordinatesForLocation(location: string): { lat: number; lon: number } {
+  private getCoordinatesForLocation(location: string): { lat: number; lon: number } | undefined {
     const coordsMap: Record<string, { lat: number; lon: number }> = {
       abuja: { lat: 9.0765, lon: 7.3986 },
       lagos: { lat: 6.5244, lon: 3.3792 },
@@ -54,7 +54,7 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
       "port harcourt": { lat: 4.8156, lon: 7.0498 }
     };
     const key = location.trim().toLowerCase();
-    return coordsMap[key] || { lat: 9.0765, lon: 7.3986 };
+    return coordsMap[key];
   }
 
   public async discoverCandidates(location: string, _industry: string, maxResults = 20): Promise<SourceQueryResult> {
@@ -64,7 +64,7 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
     const coords = this.getCoordinatesForLocation(location);
 
     // Construct Overpass QL query searching for estate agents and property management in target location
-    const query = `
+    const query = coords ? `
       [out:json][timeout:15];
       (
         node["office"="estate_agent"](around:35000, ${coords.lat}, ${coords.lon});
@@ -73,7 +73,7 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
         node["office"="property_management"](around:35000, ${coords.lat}, ${coords.lon});
       );
       out body;
-    `;
+    ` : "";
 
     // Alternatively, search by area name if geocoding/area query is supported, or use area-based search
     const areaQuery = `
@@ -99,7 +99,20 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
         signal: AbortSignal.timeout(12000)
       });
     } catch {
-      // Fallback query if area lookup failed or timed out
+      // Use a coordinate fallback only for locations with explicit coordinates.
+      // Never silently redirect an unknown location to Abuja.
+      if (!coords) {
+        return {
+          sourceName: this.name,
+          attempted: true,
+          succeeded: false,
+          queriesCount: 1,
+          candidates: [],
+          errorCode: "OSM_LOCATION_UNSUPPORTED",
+          errorMessage: `No coordinate fallback is configured for "${location}". Area-name discovery was unavailable.`,
+          executionDurationMs: Date.now() - startTime
+        };
+      }
       try {
         response = await fetch(this.endpoint, {
           method: "POST",
