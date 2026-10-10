@@ -5,7 +5,7 @@ import { User } from "../../shared/types/index.js";
 import { SerperDiscoverySource } from "./discovery/serperSource.js";
 import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js";
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
-import { DiscoverySource, RawCandidate, SourceQueryResult } from "./discovery/types.js";
+import { DiscoverySource, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 
 const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
@@ -306,7 +306,7 @@ export class LeadFinderService {
               outreachReady: true,
               breakdown: scoreData.breakdown
             });
-          } catch (err) {
+          } catch {
             rejectionReasons.persistenceError++;
             rejected++;
           }

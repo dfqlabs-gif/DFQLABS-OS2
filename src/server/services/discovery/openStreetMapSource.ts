@@ -98,7 +98,7 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
         body: `data=${encodeURIComponent(areaQuery)}`,
         signal: AbortSignal.timeout(12000)
       });
-    } catch (error) {
+    } catch {
       // Fallback query if area lookup failed or timed out
       try {
         response = await fetch(this.endpoint, {
