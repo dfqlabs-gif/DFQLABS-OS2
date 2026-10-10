@@ -299,7 +299,7 @@ export class LeadFinderService {
               serviceTier: quality
             }, user);
 
-            await db.from("leads").update({
+            const { error: discoveryUpdateError } = await db.from("leads").update({
               discovery_score: scoreData.score,
               discovery_quality: quality,
               discovery_source: source.name,
@@ -308,6 +308,10 @@ export class LeadFinderService {
               outreach_ready: true,
               updated_at: new Date().toISOString()
             }).eq("id", lead.id);
+
+            if (discoveryUpdateError) {
+              throw new Error(`Unable to persist Lead Finder metadata for lead ${lead.id}: ${discoveryUpdateError.message}`);
+            }
 
             qualified++;
             created.push({
