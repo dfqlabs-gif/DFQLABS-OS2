@@ -384,21 +384,30 @@ export class LeadFinderService {
     if (!db) throw new Error("Database is not configured.");
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const end = new Date(start); end.setDate(end.getDate() + 1);
-    const { data: leads, error: fetchError } = await db.from("leads")
-      .select("id")
-      .gte("created_at", start.toISOString())
-      .lt("created_at", end.toISOString());
-    if (fetchError) throw new Error(fetchError.message);
-    const ids = (leads || []).map((row: { id: string }) => row.id);
-    if (ids.length) {
-      const { error: deleteError } = await db.from("leads").delete().in("id", ids);
-      if (deleteError) throw new Error(deleteError.message);
-    }
+    // Resetting Lead Finder must never delete CRM leads. Prospects are real customer records,
+    // not disposable scan artifacts. Clear today's run history only; keep CRM data intact.
     const today = start.toISOString().slice(0, 10);
     const { error: runError } = await db.from("lead_finder_runs").delete().eq("run_date", today);
     if (runError) throw new Error(runError.message);
     const settings = await this.getSettings();
-    return { ...settings, target: settings.dailyTarget, newQualifiedToday: 0, remaining: settings.dailyTarget, status: "READY", reset: true, deletedLeads: ids.length };
+    const { data: remainingLeads, error: countError } = await db.from("leads")
+      .select("id")
+      .eq("outreach_ready", true)
+      .not("discovery_run_id", "is", null)
+      .gte("created_at", start.toISOString())
+      .lt("created_at", end.toISOString());
+    if (countError) throw new Error(countError.message);
+    const count = remainingLeads?.length || 0;
+    return {
+      ...settings,
+      target: settings.dailyTarget,
+      newQualifiedToday: count,
+      remaining: Math.max(0, settings.dailyTarget - count),
+      status: count >= settings.dailyTarget ? "TARGET_MET" : "READY",
+      reset: true,
+      deletedLeads: 0,
+      message: "Run history cleared. Existing CRM leads were preserved and still count toward today's target."
+    };
   }
 
   static async getHistory(limit = 20) {
