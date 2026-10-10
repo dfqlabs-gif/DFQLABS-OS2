@@ -22,37 +22,62 @@ export class DirectoryDiscoverySource implements DiscoverySource {
         signal: AbortSignal.timeout(10000)
       });
 
-      if (response.ok) {
-        const html = await response.text();
-        // Simple regex extraction for public directory search results
-        const matches = [...html.matchAll(/<a class="result__url" href="([^"]+)">[\s\S]*?<a class="result__snippet[^"]*">([\s\S]*?)<\/a>/g)];
+      if (!response.ok) {
+        return {
+          sourceName: this.name,
+          attempted: true,
+          succeeded: false,
+          queriesCount: 1,
+          candidates: [],
+          errorCode: `HTTP_${response.status}`,
+          errorMessage: `Public directory search returned HTTP ${response.status}`,
+          executionDurationMs: Date.now() - startTime
+        };
+      }
 
-        for (const match of matches) {
-          if (candidates.length >= maxResults) break;
-          const url = match[1]?.trim();
-          const rawSnippet = match[2]?.replace(/<[^>]+>/g, "").trim();
-          if (!url || !rawSnippet) continue;
+      const html = await response.text();
+      const cleanText = (value: string) => value
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\\s+/g, " ")
+        .trim();
+      const links = [...html.matchAll(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/gi)];
+      const snippets = [...html.matchAll(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\\s\\S]*?)<\\/a>/gi)];
 
-          // Attempt to extract title/company name
-          const titleMatch = rawSnippet.match(/^([^.-]+)/);
-          const companyName = titleMatch ? titleMatch[1].trim() : "Directory Listing";
-
-          const phoneMatch = rawSnippet.match(/(?:\+?234|0)[789][01]\d{8}\b/);
-
-          if (companyName.length >= 3 && !companyName.toLowerCase().includes("duckduckgo")) {
-            candidates.push({
-              companyName,
-              businessType: industry,
-              location,
-              description: rawSnippet,
-              phone: phoneMatch ? phoneMatch[0] : undefined,
-              sourceFamily: "PUBLIC_DIRECTORY",
-              sourceUrl: url,
-              sourceTitle: `${companyName} - Directory`,
-              sourceSnippet: rawSnippet
-            });
+      for (let i = 0; i < links.length && candidates.length < maxResults; i++) {
+        const linkMatch = links[i];
+        const title = cleanText(linkMatch[2] || "");
+        const snippet = cleanText(snippets[i]?.[1] || "");
+        let url = (linkMatch[1] || "").replace(/&amp;/g, "&");
+        try {
+          const parsed = new URL(url.startsWith("//") ? `https:${url}` : url);
+          if (/duckduckgo\\.com$/i.test(parsed.hostname) && parsed.searchParams.has("uddg")) {
+            url = parsed.searchParams.get("uddg") || "";
+          } else if (url.startsWith("//")) {
+            url = `https:${url}`;
           }
+        } catch {
+          continue;
         }
+        if (!title || !url || !/^https?:\\/\\//i.test(url)) continue;
+
+        const text = `${title} ${snippet}`;
+        const phoneMatch = text.match(/(?:\\+?234|0)[789][01]\\d{8}\\b/);
+        candidates.push({
+          companyName: title.split(/\\s[|–—-]\\s/)[0].trim(),
+          businessType: industry,
+          location,
+          description: snippet,
+          phone: phoneMatch ? phoneMatch[0] : undefined,
+          sourceFamily: "PUBLIC_DIRECTORY",
+          sourceUrl: url,
+          sourceTitle: title,
+          sourceSnippet: snippet
+        });
       }
 
       return {
