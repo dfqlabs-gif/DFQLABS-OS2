@@ -11,6 +11,7 @@ export const LeadFinderPage: React.FC = () => {
   const [history, setHistory] = React.useState<any[]>([]);
   const [progress, setProgress] = React.useState<any>(null);
   const [scanAcceptedAt, setScanAcceptedAt] = React.useState<number | null>(null);
+  const [trackedRunId, setTrackedRunId] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     const [s, h] = await Promise.all([
@@ -23,6 +24,7 @@ export const LeadFinderPage: React.FC = () => {
     setHistory(runs);
     setRunning(Boolean(active));
     setProgress(active);
+    setTrackedRunId(active?.id || null);
     return active;
   }, []);
 
@@ -38,20 +40,23 @@ export const LeadFinderPage: React.FC = () => {
       try {
         const h = await ApiClient.getLeadFinderHistory();
         const runs = h.runs || [];
-        const active = runs.find((r: any) => r.status === "RUNNING") || null;
+        const tracked = trackedRunId ? runs.find((r: any) => r.id === trackedRunId) || null : null;
+        const active = trackedRunId ? (tracked?.status === "RUNNING" ? tracked : null) : (runs.find((r: any) => r.status === "RUNNING") || null);
         if (cancelled) return;
 
         setHistory(runs);
-        setProgress(active);
+        if (tracked) setProgress(tracked);
+        else if (active) setProgress(active);
 
         if (!active) {
           const acceptedAt = scanAcceptedAt;
-          const recentRun = acceptedAt === null ? null : runs.find((r: any) =>
+          const recentRun = tracked || (acceptedAt === null ? null : runs.find((r: any) =>
             r.created_at && new Date(r.created_at).getTime() >= acceptedAt
-          );
+          ));
           if (recentRun && recentRun.status !== "RUNNING") {
             setRunning(false);
             setScanAcceptedAt(null);
+            setTrackedRunId(null);
             await refresh();
             return;
           }
@@ -66,14 +71,17 @@ export const LeadFinderPage: React.FC = () => {
           if (acceptedAt !== null) {
             setRunning(false);
             setScanAcceptedAt(null);
-            setError("The server accepted the scan request, but no active run appeared within 90 seconds. Check the latest run status and Render logs before trying again.");
+            setTrackedRunId(null);
+            setError("The server accepted the scan request, but its run record could not be found after 90 seconds. Check run history and Render logs before retrying.");
             await refresh();
             return;
           }
           setRunning(false);
+          setTrackedRunId(null);
           await refresh();
         } else {
           setScanAcceptedAt(null);
+          setTrackedRunId(active.id);
         }
       } catch {
         // Keep active scan UI alive through transient polling failures
@@ -86,7 +94,7 @@ export const LeadFinderPage: React.FC = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [running, starting, refresh, scanAcceptedAt, summary?.target]);
+  }, [running, starting, refresh, scanAcceptedAt, summary?.target, trackedRunId]);
 
   const run = async () => {
     if (running || starting) return;
@@ -104,9 +112,17 @@ export const LeadFinderPage: React.FC = () => {
       if (result?.accepted === false) {
         throw new Error(result?.message || "The server did not accept the Lead Finder run.");
       }
+      if (!result?.runId) throw new Error("The server returned no durable run ID. The scan was not started safely.");
+      setTrackedRunId(result.runId);
       setScanAcceptedAt(Date.now());
-      setProgress(result?.lastRun || { status: "RUNNING", target: summary?.target || 30, stats: { statusMessage: "Multi-source scan started..." } });
-      setRunning(true);
+      setProgress(result?.run || { id: result.runId, status: result.status || "RUNNING", target: summary?.target || 30, stats: { statusMessage: "Multi-source scan started..." } });
+      if (["COMPLETED", "FAILED", "PARTIAL"].includes(result.status)) {
+        setRunning(false);
+        setTrackedRunId(null);
+        await refresh();
+      } else {
+        setRunning(true);
+      }
     } catch (e) {
       setRunning(false);
       setScanAcceptedAt(null);

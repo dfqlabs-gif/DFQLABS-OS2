@@ -150,7 +150,30 @@ export class LeadFinderService {
     return { ...settings, target: settings.dailyTarget, newQualifiedToday: count, remaining: Math.max(0, settings.dailyTarget - count), status: count >= settings.dailyTarget ? "TARGET_MET" : "READY", lastRun: runs?.[0] || null };
   }
 
-  static async runDaily(user: User, requestedTarget?: number) {
+  /** Persist a run before returning an accepted response to the client. */
+  static async startRun(user: User, requestedTarget?: number) {
+    const db = getSupabaseClient();
+    if (!db) throw new Error("Database is not configured.");
+    const settings = await this.getSettings();
+    const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
+    const summary = await this.getTodaySummary(user);
+    const remaining = Math.max(0, target - summary.newQualifiedToday);
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: running, error: runningError } = await db.from("lead_finder_runs").select("id,created_at").eq("run_date", today).eq("status", "RUNNING").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (runningError) throw new Error("Unable to check active Lead Finder runs: " + runningError.message);
+    if (running) {
+      const ageMs = Date.now() - new Date(running.created_at).getTime();
+      if (ageMs <= 10 * 60 * 1000) throw new Error("A Lead Finder run is already in progress.");
+      const { error } = await db.from("lead_finder_runs").update({ status: "FAILED", completed_at: new Date().toISOString(), stats: { recovery: "STALE_RUN_AUTO_RECOVERED", staleAfterMinutes: 10, statusMessage: "Recovered a stale run before starting a new scan." } }).eq("id", running.id).eq("status", "RUNNING");
+      if (error) throw new Error("Unable to recover stale Lead Finder run: " + error.message);
+    }
+    const alreadyMet = remaining === 0;
+    const stats = alreadyMet ? { target, created: 0, remainingBeforeRun: 0, statusMessage: "Today's qualified prospect target is already met." } : { target, remainingBeforeRun: remaining, discoveryProvider: "MULTI_SOURCE_INDEPENDENT", phase: "INITIALIZING", statusMessage: "Scan accepted. Preparing discovery providers..." };
+    const { data: run, error: runError } = await db.from("lead_finder_runs").insert({ run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id, status: alreadyMet ? "COMPLETED" : "RUNNING", stats, ...(alreadyMet ? { completed_at: new Date().toISOString() } : {}) }).select("*").single();
+    if (runError || !run) throw new Error(runError?.message || "Unable to create durable Lead Finder run.");
+    return { run, alreadyMet, target, remaining };
+  }
+  static async runDaily(user: User, requestedTarget?: number, existingRunId?: string) {
     const db = getSupabaseClient();
     if (!db) throw new Error("Database is not configured.");
     const settings = await this.getSettings();
@@ -158,28 +181,24 @@ export class LeadFinderService {
     const target = Math.max(1, Math.min(500, requestedTarget || settings.dailyTarget));
     const summary = await this.getTodaySummary(user);
     const remaining = Math.max(0, target - summary.newQualifiedToday);
-    if (remaining === 0) return { ...summary, created: [], message: "Today's qualified prospect target is already met." };
+    if (remaining === 0 && !existingRunId) return { ...summary, created: [], message: "Today's qualified prospect target is already met." };
 
     const today = new Date().toISOString().slice(0, 10);
-    const { data: running } = await db.from("lead_finder_runs").select("id,created_at").eq("run_date", today).eq("status", "RUNNING").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (running) {
-      const ageMs = Date.now() - new Date(running.created_at).getTime();
-      if (ageMs > 10 * 60 * 1000) {
-        await db.from("lead_finder_runs").update({
-          status: "FAILED",
-          completed_at: new Date().toISOString(),
-          stats: { recovery: "STALE_RUN_AUTO_RECOVERED", staleAfterMinutes: 10 }
-        }).eq("id", running.id).eq("status", "RUNNING");
-      } else {
-        throw new Error("A Lead Finder run is already in progress.");
-      }
+    let run: any;
+    if (existingRunId) {
+      const { data, error } = await db.from("lead_finder_runs").select("*").eq("id", existingRunId).eq("status", "RUNNING").single();
+      if (error || !data) throw new Error(error?.message || "The accepted Lead Finder run is no longer active.");
+      run = data;
+    } else {
+      const prepared = await this.startRun(user, requestedTarget);
+      if (prepared.alreadyMet) return { ...summary, created: [], runId: prepared.run.id, status: "COMPLETED", message: "Today's qualified prospect target is already met." };
+      run = prepared.run;
     }
-
-    const { data: run, error: runError } = await db.from("lead_finder_runs").insert({
-      run_date: today, target, minimum_score: settings.minimumScore, requested_by_user_id: user.id,
-      stats: { target, remainingBeforeRun: remaining, discoveryProvider: "MULTI_SOURCE_INDEPENDENT" }
-    }).select("*").single();
-    if (runError || !run) throw new Error(runError?.message || "Unable to start Lead Finder run.");
+    if (remaining === 0) {
+      const { error } = await db.from("lead_finder_runs").update({ status: "COMPLETED", completed_at: new Date().toISOString(), stats: { target, created: 0, statusMessage: "Today's qualified prospect target is already met." } }).eq("id", run.id).eq("status", "RUNNING");
+      if (error) throw new Error("Unable to finalize target-met Lead Finder run: " + error.message);
+      return { ...summary, created: [], runId: run.id, status: "COMPLETED", message: "Today's qualified prospect target is already met." };
+    }
 
     const sources: DiscoverySource[] = [
       new SerperDiscoverySource(),
@@ -203,6 +222,10 @@ export class LeadFinderService {
       for (const location of settings.locations) {
         if (created.length >= remaining) break;
 
+        const { error: progressStartError } = await db.from("lead_finder_runs").update({
+          stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
+        }).eq("id", run.id).eq("status", "RUNNING");
+        if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
         const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 10);
         const priorStats = sourceStats[source.name];
         sourceStats[source.name] = priorStats ? {
@@ -215,6 +238,11 @@ export class LeadFinderService {
           errorMessage: result.errorMessage || priorStats.errorMessage,
           executionDurationMs: (priorStats.executionDurationMs || 0) + (result.executionDurationMs || 0)
         } : result;
+        const { error: progressEndError } = await db.from("lead_finder_runs").update({
+          found_count: found, qualified_count: qualified, duplicate_count: duplicate, rejected_count: rejected,
+          stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "QUALIFICATION", currentProvider: source.name, currentLocation: location, statusMessage: "Reviewed " + found + " candidates; " + created.length + " qualified prospects saved so far." }
+        }).eq("id", run.id).eq("status", "RUNNING");
+        if (progressEndError) throw new Error("Unable to persist Lead Finder provider progress: " + progressEndError.message);
 
         if (!result.succeeded) {
           console.warn(`[Lead Finder] Source ${source.name} failed:`, result.errorMessage);
@@ -347,22 +375,12 @@ export class LeadFinderService {
           ? "Discovery sources responded but returned no candidates. Try another location or run again later."
           : "All configured discovery sources failed or were unavailable. Review provider diagnostics before retrying.";
 
-    await db.from("lead_finder_runs").update({
-      status: finalStatus,
-      found_count: found,
-      qualified_count: qualified,
-      duplicate_count: duplicate,
-      rejected_count: rejected,
-      stats: {
-        target,
-        created: created.length,
-        rejectionReasons,
-        sourceStats,
-        failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : undefined,
-        statusMessage
-      },
+    const { error: finalUpdateError } = await db.from("lead_finder_runs").update({
+      status: finalStatus, found_count: found, qualified_count: qualified, duplicate_count: duplicate, rejected_count: rejected,
+      stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "FINISHED", failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : undefined, statusMessage },
       completed_at: new Date().toISOString()
-    }).eq("id", run.id);
+    }).eq("id", run.id).eq("status", "RUNNING");
+    if (finalUpdateError) throw new Error("Unable to persist final Lead Finder status: " + finalUpdateError.message);
 
     const final = await this.getTodaySummary(user);
     return {
