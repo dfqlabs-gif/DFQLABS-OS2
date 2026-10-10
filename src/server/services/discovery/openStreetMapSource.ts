@@ -106,27 +106,43 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
 
     // Try multiple independent public Overpass instances. Render may be unable
     // to reach one host even when the others remain available.
-    for (const endpoint of this.endpoints) {
-      try {
-        queriesCount++;
-        response = await request(endpoint, areaQuery);
-        break;
-      } catch (error) {
-        lastNetworkError = error;
-      }
-    }
-
-    // If area-name lookup failed at the HTTP/network level, try known coordinates
-    // against alternate endpoints. Never redirect an unknown location to Abuja.
-    if (!response && coords) {
+    const requestAcrossEndpoints = async (ql: string) => {
       for (const endpoint of this.endpoints) {
         try {
           queriesCount++;
-          response = await request(endpoint, query);
-          break;
+          const candidateResponse = await request(endpoint, ql);
+          // Treat rate limits, server overload and gateway errors as endpoint
+          // failures so another independent public instance gets a chance.
+          if ([408, 429, 500, 502, 503, 504].includes(candidateResponse.status)) {
+            lastNetworkError = new Error(`Overpass endpoint returned HTTP ${candidateResponse.status}`);
+            continue;
+          }
+          return candidateResponse;
         } catch (error) {
           lastNetworkError = error;
         }
+      }
+      return undefined;
+    };
+
+    response = await requestAcrossEndpoints(areaQuery);
+
+    // If area-name lookup failed at the network/provider level OR returned no
+    // matching businesses, try known coordinates. Never redirect unknown places
+    // to Abuja, and do not stop at the first empty area response.
+    if ((!response || response.ok) && coords) {
+      let areaHadCandidates = false;
+      if (response?.ok) {
+        try {
+          const body = await response.clone().json() as OverpassResponse;
+          areaHadCandidates = Array.isArray(body.elements) && body.elements.length > 0;
+        } catch {
+          areaHadCandidates = false;
+        }
+      }
+      if (!areaHadCandidates) {
+        const coordinateResponse = await requestAcrossEndpoints(query);
+        if (coordinateResponse) response = coordinateResponse;
       }
     }
 
