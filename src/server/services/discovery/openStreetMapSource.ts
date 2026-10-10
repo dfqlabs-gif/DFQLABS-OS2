@@ -125,26 +125,13 @@ export class OpenStreetMapDiscoverySource implements DiscoverySource {
       return undefined;
     };
 
-    response = await requestAcrossEndpoints(areaQuery);
-
-    // If area-name lookup failed at the network/provider level OR returned no
-    // matching businesses, try known coordinates. Never redirect unknown places
-    // to Abuja, and do not stop at the first empty area response.
-    if ((!response || response.ok) && coords) {
-      let areaHadCandidates = false;
-      if (response?.ok) {
-        try {
-          const body = await response.clone().json() as OverpassResponse;
-          areaHadCandidates = Array.isArray(body.elements) && body.elements.length > 0;
-        } catch {
-          areaHadCandidates = false;
-        }
-      }
-      if (!areaHadCandidates) {
-        const coordinateResponse = await requestAcrossEndpoints(query);
-        if (coordinateResponse) response = coordinateResponse;
-      }
-    }
+    // Known target cities use a bounded-radius coordinate query first. This
+    // avoids spending up to six requests per location on an area lookup plus a
+    // coordinate fallback, which made scans unnecessarily long and fragile.
+    // Unknown locations use area-name discovery only; never redirect them to Abuja.
+    response = coords
+      ? await requestAcrossEndpoints(query)
+      : await requestAcrossEndpoints(areaQuery);
 
     if (!response) {
       return {
