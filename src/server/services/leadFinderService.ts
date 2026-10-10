@@ -68,19 +68,22 @@ function qualityFor(score: number): Candidate["quality"] {
 }
 
 function scoreCandidate(input: { companyName: string; description: string; location: string; industry: string; website?: string; instagram?: string; email?: string; phone?: string }) {
-  const text = normalize([input.companyName, input.description, input.location, input.industry].join(" "));
-  const industryFit = /(real estate|property|properties|realtor|realty|developer|development|homes|estate|housing|investment)/i.test(text) ? 20 : 0;
-  const locationFit = text.includes(normalize(input.location)) || /nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa/i.test(text) ? 10 : 0;
-  const companyQuality = /(developer|luxury|premium|estate|group|holdings|investment|properties)/i.test(text) ? 10 : 4;
+  // Score evidence from the discovered business, not the search query. Including the
+  // requested industry/location here would make every result appear relevant by default.
+  const evidenceText = normalize([input.companyName, input.description].join(" "));
+  const industryFit = /(real estate|property|properties|realtor|realty|developer|development|homes|estate agent|housing|property management|brokerage)/i.test(evidenceText) ? 25 : 0;
+  const locationEvidence = normalize(input.location);
+  const locationFit = locationEvidence && /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta)/i.test(locationEvidence) ? 10 : 0;
+  const companyQuality = /(developer|luxury|premium|estate|group|holdings|investment|properties|realty|homes)/i.test(normalize(input.companyName)) ? 10 : 4;
   const digitalPresence = (input.website || input.instagram) ? 10 : 0;
-  const contentOpportunity = input.instagram ? 15 : 10;
-  const websiteOpportunity = input.website ? 4 : 10;
-  const highTicket = /(luxury|premium|commercial|investment|developer|estate|off.?plan|high.?end)/i.test(text) ? 10 : 5;
-  const contactability = (input.phone ? 5 : 0) + (input.email ? 5 : 0);
-  const strategicFit = /nigeria/i.test(text) || normalize(input.location) ? 5 : 0;
+  const contentOpportunity = input.instagram ? 10 : 5;
+  const websiteOpportunity = input.website ? 4 : 8;
+  const highTicket = /(luxury|premium|commercial|investment|developer|estate|off.?plan|high.?end)/i.test(evidenceText) ? 10 : 5;
+  const contactability = (input.phone ? 10 : 0) + (input.email ? 5 : 0);
+  const strategicFit = /nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta/i.test(evidenceText) ? 5 : 0;
   const breakdown = { industryFit, locationFit, companyQuality, digitalPresence, contentOpportunity, websiteOpportunity, highTicket, contactability, strategicFit };
   const score = Math.min(100, Object.values(breakdown).reduce((a, b) => a + b, 0));
-  return { score, breakdown };
+  return { score, breakdown, hasRealEstateEvidence: industryFit > 0 };
 }
 
 export class LeadFinderService {
@@ -202,7 +205,17 @@ export class LeadFinderService {
         if (created.length >= remaining) break;
 
         const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 10);
-        sourceStats[source.name] = result;
+        const priorStats = sourceStats[source.name];
+        sourceStats[source.name] = priorStats ? {
+          sourceName: source.name,
+          attempted: priorStats.attempted || result.attempted,
+          succeeded: priorStats.succeeded || result.succeeded,
+          queriesCount: priorStats.queriesCount + result.queriesCount,
+          candidates: [...priorStats.candidates, ...result.candidates],
+          errorCode: result.errorCode || priorStats.errorCode,
+          errorMessage: result.errorMessage || priorStats.errorMessage,
+          executionDurationMs: (priorStats.executionDurationMs || 0) + (result.executionDurationMs || 0)
+        } : result;
 
         if (!result.succeeded) {
           console.warn(`[Lead Finder] Source ${source.name} failed:`, result.errorMessage);
@@ -249,13 +262,20 @@ export class LeadFinderService {
           const scoreData = scoreCandidate({
             companyName,
             description: candidate.description || "",
-            location,
+            location: candidate.location || location,
             industry: settings.industries[0] || "real estate",
             website: candidate.website,
             instagram: candidate.instagram,
             email: candidate.email,
             phone: validPhone
           });
+
+          // Hard qualification gates cannot be bypassed by a numerical score.
+          if (!scoreData.hasRealEstateEvidence) {
+            rejectionReasons.belowMinimumScore++;
+            rejected++;
+            continue;
+          }
 
           if (scoreData.score < settings.minimumScore) {
             rejectionReasons.belowMinimumScore++;
