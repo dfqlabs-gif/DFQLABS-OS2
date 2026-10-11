@@ -81,15 +81,20 @@ function scoreCandidate(input: { companyName: string; description: string; locat
   // Score evidence from the discovered business, not the search query. Including the
   // requested industry/location here would make every result appear relevant by default.
   const evidenceText = normalize([input.companyName, input.description].join(" ")).replace(/[_-]+/g, " ");
+  const locationText = normalize(input.location);
   const industryFit = /(real estate|property|properties|realtor|realty|developer|development|homes|estate agent|housing|property management|brokerage)/i.test(evidenceText) ? 25 : 0;
-  const locationFit = /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta)/i.test(evidenceText) ? 10 : 0;
+  // Location is populated by the discovery source's market-specific search. Award geographic
+  // relevance from that source context, but still require independent real-estate evidence above.
+  const locationFit = /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta|uyo|calabar|enugu|ibadan|owerri|warri|port harcourt)/i.test(evidenceText)
+    || /(abuja|lagos|kano|kaduna|jos|asaba|benin city|akwa ibom|delta|uyo|calabar|enugu|ibadan|owerri|warri|port harcourt)/i.test(locationText) ? 10 : 0;
   const companyQuality = /(developer|luxury|premium|estate|group|holdings|investment|properties|realty|homes)/i.test(normalize(input.companyName)) ? 10 : 4;
   const digitalPresence = (input.website || input.instagram) ? 10 : 0;
   const contentOpportunity = input.instagram ? 10 : 5;
   const websiteOpportunity = input.website ? 4 : 8;
   const highTicket = /(luxury|premium|commercial|investment|developer|estate|off.?plan|high.?end)/i.test(evidenceText) ? 10 : 5;
   const contactability = (input.phone ? 10 : 0) + (input.email ? 5 : 0);
-  const strategicFit = /nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta/i.test(evidenceText) ? 5 : 0;
+  const strategicFit = /nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta|uyo|calabar|enugu|ibadan|owerri|warri|port harcourt/i.test(evidenceText)
+    || /(abuja|lagos|kano|kaduna|jos|asaba|benin city|akwa ibom|delta|uyo|calabar|enugu|ibadan|owerri|warri|port harcourt)/i.test(locationText) ? 5 : 0;
   const breakdown = { industryFit, locationFit, companyQuality, digitalPresence, contentOpportunity, websiteOpportunity, highTicket, contactability, strategicFit };
   const score = Math.min(100, Object.values(breakdown).reduce((a, b) => a + b, 0));
   return { score, breakdown, hasRealEstateEvidence: industryFit > 0 };
