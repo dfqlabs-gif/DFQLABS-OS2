@@ -58,7 +58,6 @@ export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName"
     try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
   };
   // NPC adapter supplies a specific advertiser identity; its listing URL is evidence, not a directory-page candidate.
-  if (candidate.sourceFamily === "APIFY_NPC") return false;
   const hosts = [candidate.sourceUrl, candidate.website].map(hostOf).filter(Boolean);
   const socialProfile = [candidate.instagram, candidate.facebook, candidate.linkedin, candidate.sourceUrl]
     .some((value) => /(?:^|\.)instagram\.com$|(?:^|\.)facebook\.com$|(?:^|\.)linkedin\.com$/i.test(hostOf(value)));
