@@ -77,7 +77,7 @@ function qualityFor(score: number): Candidate["quality"] {
   return "MEDIUM";
 }
 
-function scoreCandidate(input: { companyName: string; description: string; location: string; industry: string; website?: string; instagram?: string; email?: string; phone?: string }) {
+export function scoreCandidate(input: { companyName: string; description: string; location: string; industry: string; website?: string; instagram?: string; email?: string; phone?: string }) {
   // Score evidence from the discovered business, not the search query. Including the
   // requested industry/location here would make every result appear relevant by default.
   const evidenceText = normalize([input.companyName, input.description].join(" ")).replace(/[_-]+/g, " ");
