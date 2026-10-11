@@ -59,7 +59,7 @@ export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName"
   const socialProfile = [candidate.instagram, candidate.facebook, candidate.linkedin, candidate.sourceUrl]
     .some((value) => /(?:^|\.)instagram\.com$|(?:^|\.)facebook\.com$|(?:^|\.)linkedin\.com$/i.test(hostOf(value)));
   const knownDirectoryHost = hosts.some((host) =>
-    /(?:^|\\.)(?:businesslist\\.com\\.ng|finelib\\.com|vconnect\\.com|yellowpages\\.ng|businessdirectory\\.ng|nigeriapropertycentre\\.com|propertypro\\.ng)$/.test(host)
+    /(?:^|\.)(?:businesslist\.com\.ng|finelib\.com|vconnect\.com|yellowpages\.ng|businessdirectory\.ng|nigeriapropertycentre\.com|propertypro\.ng)$/.test(host)
   );
   if (knownDirectoryHost && !socialProfile) return true;
 
