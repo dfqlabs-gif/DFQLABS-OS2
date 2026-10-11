@@ -18,6 +18,7 @@ function candidate(overrides: Partial<RawCandidate> = {}): RawCandidate {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("PublicContactEnricher", () => {
