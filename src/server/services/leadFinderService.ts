@@ -265,7 +265,7 @@ export class LeadFinderService {
     for (const source of sources) {
       if (created.length >= remaining) break;
 
-      const locationsForSource = source.name === "OPENSTREETMAP" ? settings.locations : discoveryLocations;
+      const locationsForSource = source.name === "OPENSTREETMAP" || source.name === "APIFY_NPC" ? settings.locations : discoveryLocations;
       for (const location of locationsForSource) {
         if (created.length >= remaining) break;
 
@@ -273,7 +273,7 @@ export class LeadFinderService {
           stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
         }).eq("id", run.id).eq("status", "RUNNING");
         if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
-        const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 40);
+        const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", source.name === "APIFY_NPC" ? 10 : 40);
         // Search snippets often omit contact details even when the business publishes a phone
         // number on its own public website/profile. Enrich candidates before the phone qualification gate.
         // Apply the directory-page gate to every provider (including Serper), not just the
