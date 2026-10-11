@@ -1,6 +1,6 @@
 import { RawCandidate } from "./types.js";
 
-const PHONE_PATTERN = /(?:\+?234[\s().-]*[789][01][\s().-]*\d{3}[\s().-]*\d{4}|0[789][01][\s().-]*\d{3}[\s().-]*\d{4})/g;
+const PHONE_PATTERN = /(?:\+?234[\s().-]*[789][01][\s().-]*\d{4}[\s().-]*\d{4}|0[789][01][\s().-]*\d{4}[\s().-]*\d{4})/g;
 const BLOCKED_HOST = /(?:^|\.)(?:instagram|facebook|linkedin|tiktok|youtube|google|bing|duckduckgo|twitter|x|whatsapp)\.com$/i;
 
 function normalizePhone(raw: string): string {
