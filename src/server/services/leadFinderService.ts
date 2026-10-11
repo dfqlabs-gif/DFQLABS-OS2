@@ -358,6 +358,19 @@ export class LeadFinderService {
               discovery_provider: source.name,
               discovery_run_id: run.id,
               outreach_ready: true,
+              identity_confidence: Math.round((identityAssessment?.confidence ?? 0) * 100),
+              identity_signals: [
+                candidate.sourceTitle ? { type: "SOURCE_TITLE", value: candidate.sourceTitle } : null,
+                candidate.sourceSnippet ? { type: "SOURCE_SNIPPET", value: candidate.sourceSnippet.slice(0, 1200) } : null,
+                identityAssessment?.status === "RESOLVED" ? { type: "IDENTITY_RESOLUTION", confidence: identityAssessment.confidence } : null
+              ].filter(Boolean),
+              discovery_evidence: {
+                sourceUrl: candidate.sourceUrl || null,
+                sourceTitle: candidate.sourceTitle || null,
+                sourceSnippet: candidate.sourceSnippet || candidate.description || null,
+                originalCompanyName: (candidate.rawTags?.identityAssessment as { originalCompanyName?: string } | undefined)?.originalCompanyName || companyName,
+                identityAssessment: candidate.rawTags?.identityAssessment || null
+              },
               updated_at: new Date().toISOString()
             }).eq("id", lead.id);
 
