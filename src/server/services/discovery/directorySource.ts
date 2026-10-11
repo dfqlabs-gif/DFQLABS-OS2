@@ -92,6 +92,12 @@ export class DirectoryDiscoverySource implements DiscoverySource {
         if (/^(?:html\.)?duckduckgo\.com$/i.test(parsedUrl.hostname)) continue;
         const resultHost = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
         const socialProfile = /^(?:instagram|facebook|linkedin)\.com$/.test(resultHost) || /\.(?:instagram|facebook|linkedin)\.com$/.test(resultHost);
+        const directoryHost = /(?:^|\.)(?:businesslist\.com\.ng|finelib\.com|vconnect\.com|yellowpages\.ng|businessdirectory\.ng)$/i.test(resultHost);
+        const directoryContent = /\b(?:business directory|company directory|directory features a list|list of real estate agencies|list of real estate companies|real estate agencies in .{2,50},? nigeria|list your property|owners or professionals can list|browse (?:our )?directory|find companies listed)\b/i.test(`${result.title} ${result.snippet}`);
+        // Do not create CRM prospects for a directory itself. This source currently does not
+        // reliably parse individual agency records from directory pages, so those pages are
+        // evidence sources at most—not outreach targets.
+        if (directoryHost || (directoryContent && !socialProfile)) continue;
         const obviousListingTitle = /^(?:verified\s+)?(?:house|land|plot|apartment|flat|duplex|property|properties|home|building|two[- ]storey|two[- ]story)\b/i.test(result.title)
           || /\b(?:for sale|for rent|to let|land listings?|property listings?|two[- ]storey|two[- ]story)\b/i.test(result.title);
         const publisherEvidence = /\b(?:limited|ltd\.?|plc|homes?|realty|properties|estates?|developers?|realtors?|shelters|holdings|ventures|group)\b/i.test(result.snippet);
@@ -101,7 +107,7 @@ export class DirectoryDiscoverySource implements DiscoverySource {
         seenUrls.add(canonicalUrl);
 
         const text = `${result.title} ${result.snippet}`;
-        const phoneMatch = text.match(/(?:\+?234|0)[789][01]\d{8}\b/);
+        const phoneMatch = text.match(/(?:\+?234[\s().-]*[789][01](?:[\s().-]*\d){8}|0[\s().-]*[789][01](?:[\s().-]*\d){8})/);
         const host = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
         const isInstagram = host === "instagram.com" || host.endsWith(".instagram.com");
         const isFacebook = host === "facebook.com" || host.endsWith(".facebook.com");
