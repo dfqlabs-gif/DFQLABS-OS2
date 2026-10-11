@@ -56,6 +56,8 @@ describe("CompanyIdentityResolver", () => {
     const [resolved] = await CompanyIdentityResolver.resolve([candidate({
       companyName: "Abuja Property Ward",
       sourceTitle: "Abuja Property Ward",
+      phone: undefined,
+      email: undefined,
       sourceSnippet: "Real estate services in Abuja. Call 0802 0771 659 or email hello@abujapropertyward.ng."
     })], "Abuja");
     expect(resolved.phone).toBe("0802 0771 659");
