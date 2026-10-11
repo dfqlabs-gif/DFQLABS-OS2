@@ -20,7 +20,7 @@ describe("Lead Finder qualification scoring", () => {
 
   it("does not award industry fit based only on a location", () => {
     const result = scoreCandidate({
-      companyName: "Bright Homes Realty",
+      companyName: "Bright Retail Group",
       description: "Fashion and lifestyle retail company.",
       location: "Abuja",
       industry: "real estate agency",
