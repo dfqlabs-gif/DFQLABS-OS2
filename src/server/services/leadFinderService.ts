@@ -53,7 +53,7 @@ function domain(value?: string): string {
   } catch { return ""; }
 }
 
-export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin" | "sourceFamily">): boolean {
+export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin"> & Partial<Pick<RawCandidate, "sourceFamily">>): boolean {
   const hostOf = (value?: string) => {
     try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
   };
