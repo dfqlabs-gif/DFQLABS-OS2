@@ -7,6 +7,7 @@ import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
 import { DiscoverySource, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
+import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js";
 
 const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
 const SUPPLEMENTAL_NIGERIAN_MARKETS = ["Lagos", "Port Harcourt", "Ibadan", "Enugu", "Owerri", "Warri", "Uyo", "Calabar"];
@@ -238,17 +239,21 @@ export class LeadFinderService {
         }).eq("id", run.id).eq("status", "RUNNING");
         if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
         const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 40);
+        // Resolve generic property-ad headlines against the original title, snippet and source URL
+        // before qualification. The resolver is conservative and leaves uncertain identities unpromoted.
+        const resolvedCandidates = await CompanyIdentityResolver.resolve(result.candidates, location);
+        const resolvedResult = { ...result, candidates: resolvedCandidates };
         const priorStats = sourceStats[source.name];
         sourceStats[source.name] = priorStats ? {
           sourceName: source.name,
           attempted: priorStats.attempted || result.attempted,
           succeeded: priorStats.succeeded || result.succeeded,
           queriesCount: priorStats.queriesCount + result.queriesCount,
-          candidates: [...priorStats.candidates, ...result.candidates],
+          candidates: [...priorStats.candidates, ...resolvedCandidates],
           errorCode: result.errorCode || priorStats.errorCode,
           errorMessage: result.errorMessage || priorStats.errorMessage,
           executionDurationMs: (priorStats.executionDurationMs || 0) + (result.executionDurationMs || 0)
-        } : result;
+        } : resolvedResult;
         const { error: progressEndError } = await db.from("lead_finder_runs").update({
           found_count: found, qualified_count: qualified, duplicate_count: duplicate, rejected_count: rejected,
           stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "QUALIFICATION", currentProvider: source.name, currentLocation: location, statusMessage: "Reviewed " + found + " candidates; " + created.length + " qualified prospects saved so far." }
@@ -260,7 +265,7 @@ export class LeadFinderService {
           continue;
         }
 
-        for (const candidate of result.candidates) {
+        for (const candidate of resolvedCandidates) {
           if (created.length >= remaining) break;
           found++;
 
