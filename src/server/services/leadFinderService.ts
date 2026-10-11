@@ -6,6 +6,7 @@ import { SerperDiscoverySource } from "./discovery/serperSource.js";
 import { GooglePlacesDiscoverySource } from "./discovery/googlePlacesSource.js";
 import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js";
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
+import { ApifyNpcDiscoverySource } from "./discovery/apifyNpcSource.js";
 import { DiscoverySource, RawCandidate, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js";
@@ -236,6 +237,9 @@ export class LeadFinderService {
     }
 
     const sources: DiscoverySource[] = [
+      // Public NPC advertiser data provides a dedicated Nigeria-specific real-estate discovery path.
+      // Optional: runs only when APIFY_API_TOKEN is configured; capped to protect free credits.
+      new ApifyNpcDiscoverySource(),
       // Structured business/place search reduces reliance on web snippets and article titles.
       new GooglePlacesDiscoverySource(),
       new SerperDiscoverySource(),
