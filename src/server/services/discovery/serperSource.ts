@@ -104,7 +104,7 @@ export class SerperDiscoverySource implements DiscoverySource {
 
           // Extract public telephone numbers from search snippet or title
           const text = `${res.title} ${res.snippet || ""}`;
-          const phoneMatch = text.match(/(?:\+?234|0)[789][01]\d{8}\b/);
+          const phoneMatch = text.match(/(?:\+?234[\s().-]*[789][01](?:[\s().-]*\d){8}|0[\s().-]*[789][01](?:[\s().-]*\d){8})/);
 
           let host = "";
           try {
