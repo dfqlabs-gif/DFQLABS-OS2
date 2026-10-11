@@ -6,6 +6,7 @@ import { SerperDiscoverySource } from "./discovery/serperSource.js";
 import { GooglePlacesDiscoverySource } from "./discovery/googlePlacesSource.js";
 import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js";
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
+import { ApifyNpcDiscoverySource } from "./discovery/apifyNpcSource.js";
 import { DiscoverySource, RawCandidate, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js";
@@ -52,10 +53,11 @@ function domain(value?: string): string {
   } catch { return ""; }
 }
 
-export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin">): boolean {
+export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin"> & Partial<Pick<RawCandidate, "sourceFamily">>): boolean {
   const hostOf = (value?: string) => {
     try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
   };
+  // NPC adapter supplies advertiser identity separately from the listing headline.
   const hosts = [candidate.sourceUrl, candidate.website].map(hostOf).filter(Boolean);
   const socialProfile = [candidate.instagram, candidate.facebook, candidate.linkedin, candidate.sourceUrl]
     .some((value) => /(?:^|\.)instagram\.com$|(?:^|\.)facebook\.com$|(?:^|\.)linkedin\.com$/i.test(hostOf(value)));
@@ -84,9 +86,9 @@ function isGenericCompanyName(value: string): boolean {
 
   if (!name || name.length < 4 || name.length > 110) return true;
   // Search results often return a listing title or a seller's sentence rather than a company identity.
-  if (/^(?:please contact|contact|call|whatsapp|we are|we're|we offer|we deal|we are into|for more information|buy|sell|rent|looking for)\b/i.test(raw)) return true;
+  if (/^(?:please contact|contact|call|whatsapp|we are|we're|we offer|we deal|we are into|for more information|buy|sell|rent|looking for|how to|how do i|guide to|steps to|tips for|establishing a|starting a|register(?:ing)? (?:a|your|the)|becoming a)\b/i.test(raw)) return true;
   if (/^(?:house|land|plot|apartment|flat|duplex|property|properties|home|building)\s+(?:for sale|for rent|to let|available)\b/i.test(raw)) return true;
-  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent)\b/i.test(raw)) return true;
+  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent|audit services|statutory audit|external audit|accounting services|tax consultancy|legal services|law firm)\b/i.test(raw)) return true;
   if (/\b(?:0[789][01]\d{8}|\+?234[789][01]\d{8})\b/.test(raw)) return true;
   if (/[!?]/.test(raw) || /\.\s+[A-Z]/.test(value)) return true;
   return /^(?:real estate|property|properties|realty|realtor|housing|estate|luxury real estate|real estate company|property company|real estate agency|property agency|real estate developer|property developer|real estate investment company|real estate companies|property companies|real estate agencies|property agencies|real estate developers|best real estate companies|top real estate companies|unknown real estate company)(?: in .*)?$/.test(name);
@@ -236,6 +238,9 @@ export class LeadFinderService {
     }
 
     const sources: DiscoverySource[] = [
+      // Public NPC advertiser data provides a dedicated Nigeria-specific real-estate discovery path.
+      // Optional: runs only when APIFY_API_TOKEN is configured; capped to protect free credits.
+      new ApifyNpcDiscoverySource(),
       // Structured business/place search reduces reliance on web snippets and article titles.
       new GooglePlacesDiscoverySource(),
       new SerperDiscoverySource(),

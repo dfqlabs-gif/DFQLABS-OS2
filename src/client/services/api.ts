@@ -58,7 +58,11 @@ export class ApiClient {
       throw new Error(detail);
     }
 
-    return res.json();
+    if (res.status === 204) return undefined as T;
+    const responseText = await res.text();
+    if (!responseText) return undefined as T;
+    try { return JSON.parse(responseText) as T; }
+    catch { throw new Error("The server returned an invalid response."); }
   }
 
   public static login(email: string, password: string): Promise<{ token: string; user: User; seat?: OutreachSeat }> {
@@ -109,10 +113,12 @@ export class ApiClient {
     });
   }
 
-  public static getProspects(query?: { search?: string; stage?: string }): Promise<{ leads: Lead[]; total: number }> {
+  public static getProspects(query?: { search?: string; stage?: string; limit?: number; page?: number }): Promise<{ leads: Lead[]; total: number; page?: number; totalPages?: number }> {
     const params = new URLSearchParams();
     if (query?.search) params.append("search", query.search);
     if (query?.stage) params.append("stage", query.stage);
+    params.append("limit", String(query?.limit ?? 100));
+    params.append("page", String(query?.page ?? 1));
     return this.request(`/api/v1/prospects?${params.toString()}`);
   }
 
