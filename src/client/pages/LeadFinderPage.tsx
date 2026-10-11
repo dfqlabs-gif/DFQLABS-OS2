@@ -311,6 +311,26 @@ export const LeadFinderPage: React.FC = () => {
         </div>
       )}
 
+      {completionNotice && (
+        <div role="alert" aria-live="assertive" style={{
+          position: "fixed", zIndex: 1000, right: "1rem", top: "1rem",
+          width: "min(440px, calc(100vw - 2rem))", padding: "1rem",
+          border: "1px solid var(--glacier-blue, #00D4FF)", borderRadius: "12px",
+          background: "#101820", color: "#ffffff", boxShadow: "0 12px 40px rgba(0,0,0,.4)"
+        }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
+            <strong>{completionNotice.status === "COMPLETED" ? "Lead Finder scan completed" : completionNotice.status === "PARTIAL" ? "Lead Finder scan finished — partial results" : "Lead Finder scan failed"}</strong>
+            <button className="btn-secondary" onClick={() => setCompletionNotice(null)} aria-label="Dismiss scan completion notice">Dismiss</button>
+          </div>
+          <p style={{ margin: ".6rem 0" }}>
+            {Number(completionNotice.qualified_count ?? completionNotice.stats?.created ?? 0)} qualified prospects saved out of {Number(completionNotice.target ?? completionNotice.stats?.target ?? 30)} requested.
+          </p>
+          <p style={{ margin: 0, opacity: .85, fontSize: ".9rem" }}>
+            {Number(completionNotice.found_count ?? completionNotice.stats?.found ?? 0)} candidates reviewed · {Number(completionNotice.rejected_count ?? completionNotice.stats?.rejected ?? 0)} rejected · {Number(completionNotice.duplicate_count ?? completionNotice.stats?.duplicate ?? 0)} duplicates.
+          </p>
+        </div>
+      )}
+
       {displayedCompletion && (
         <div className={displayedCompletion.status === "FAILED" ? "lead-finder-error" : "finder-diagnostics-note"} role="status" aria-live="polite">
           <strong>
