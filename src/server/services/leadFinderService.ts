@@ -5,7 +5,7 @@ import { User } from "../../shared/types/index.js";
 import { SerperDiscoverySource } from "./discovery/serperSource.js";
 import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js";
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
-import { DiscoverySource, SourceQueryResult } from "./discovery/types.js";
+import { DiscoverySource, RawCandidate, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js";
 import { PublicContactEnricher } from "./discovery/publicContactEnricher.js";
@@ -49,6 +49,26 @@ function domain(value?: string): string {
     const u = new URL(value || "");
     return u.hostname.replace(/^www\./, "").toLowerCase();
   } catch { return ""; }
+}
+
+export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin">): boolean {
+  const hostOf = (value?: string) => {
+    try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+  };
+  const hosts = [candidate.sourceUrl, candidate.website].map(hostOf).filter(Boolean);
+  const socialProfile = [candidate.instagram, candidate.facebook, candidate.linkedin, candidate.sourceUrl]
+    .some((value) => /(?:^|\.)instagram\.com$|(?:^|\.)facebook\.com$|(?:^|\.)linkedin\.com$/i.test(hostOf(value)));
+  const knownDirectoryHost = hosts.some((host) =>
+    /(?:^|\.)(?:businesslist\.com\.ng|finelib\.com|vconnect\.com|yellowpages\.ng|businessdirectory\.ng|nigeriapropertycentre\.com|propertypro\.ng)$/.test(host)
+  );
+  if (knownDirectoryHost && !socialProfile) return true;
+
+  const title = normalize(candidate.sourceTitle || candidate.companyName);
+  const evidence = normalize([candidate.sourceSnippet, candidate.description].filter(Boolean).join(" "));
+  const directoryTitle = /^(?:list of (?:business|real estate|property) (?:companies|agencies|businesses)|real estate agencies in .{2,80}|list of business companies|property directory|business directory|company directory|directory of .+|top real estate companies(?: in .+)?)$/.test(title);
+  const directoryEvidence = /\b(?:this directory features a list of|business directory of|browse our (?:business )?directory|owners or professionals can list (?:their )?(?:business|property)|list of real estate agencies|list of real estate companies|directory page presents a list of)\b/.test(evidence);
+  // A social profile may use a call-to-action as its display name; resolve that profile identity instead of discarding it.
+  return !socialProfile && (directoryTitle || directoryEvidence);
 }
 
 function isGenericCompanyName(value: string): boolean {
@@ -228,7 +248,7 @@ export class LeadFinderService {
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0;
     const rejectionReasons: Record<string, number> = {
-      genericCompanyName: 0, invalidNigeriaPhone: 0, duplicateIdentity: 0, belowMinimumScore: 0, persistenceError: 0
+      genericCompanyName: 0, directoryPage: 0, invalidNigeriaPhone: 0, duplicateIdentity: 0, belowMinimumScore: 0, persistenceError: 0
     };
 
     const sourceStats: Record<string, SourceQueryResult> = {};
@@ -247,7 +267,16 @@ export class LeadFinderService {
         const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 40);
         // Search snippets often omit contact details even when the business publishes a phone
         // number on its own public website/profile. Enrich candidates before the phone qualification gate.
-        const enrichedCandidates = await PublicContactEnricher.enrich(result.candidates);
+        // Apply the directory-page gate to every provider (including Serper), not just the
+        // public-directory provider. A directory is never itself an outreach prospect.
+        const candidateResults = result.candidates.filter((candidate) => {
+          if (!isDirectoryCandidate(candidate)) return true;
+          found++;
+          rejected++;
+          rejectionReasons.directoryPage++;
+          return false;
+        });
+        const enrichedCandidates = await PublicContactEnricher.enrich(candidateResults);
         // Resolve generic property-ad headlines against original source evidence before qualification.
         const resolvedCandidates = await CompanyIdentityResolver.resolve(enrichedCandidates, location);
         const resolvedResult = { ...result, candidates: resolvedCandidates };
@@ -348,7 +377,7 @@ export class LeadFinderService {
             const lead = await PersistentProspectService.create({
               companyName,
               businessType: "REAL ESTATE",
-              location,
+              location: candidate.location || location,
               description: candidate.description || `Discovered via ${source.name} for ${companyName}.`,
               phone: validPhone,
               email: candidate.email,
