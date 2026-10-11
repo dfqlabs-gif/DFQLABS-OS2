@@ -16,18 +16,6 @@ function cleanText(value: string): string {
     .trim();
 }
 
-function looksLikeCompanyIdentity(title: string): boolean {
-  const value = title.trim();
-  const normalized = value.toLowerCase().replace(/\s+/g, " ");
-  if (value.length < 4 || value.length > 110) return false;
-  if (/^(?:please contact|contact|call|whatsapp|we are|we're|we offer|we deal|we are into|for more information|buy|sell|rent|looking for)\b/i.test(normalized)) return false;
-  if (/^(?:house|land|plot|apartment|flat|duplex|property|properties|home|building)\s+(?:for sale|for rent|to let|available)\b/i.test(normalized)) return false;
-  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent)\b/i.test(normalized)) return false;
-  if (/\b(?:0[789][01]\d{8}|\+?234[789][01]\d{8})\b/.test(normalized)) return false;
-  if (/[!?]/.test(value)) return false;
-  return true;
-}
-
 function extractLinks(html: string): SearchResultLink[] {
   const links = [...html.matchAll(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)];
   const snippets = [...html.matchAll(/<(?:a|div|span)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|span)>/gi)];
