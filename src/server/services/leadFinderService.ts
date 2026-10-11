@@ -271,6 +271,14 @@ export class LeadFinderService {
 
           const companyName = candidate.companyName.trim();
           const companyKey = normalize(companyName);
+          const identityAssessment = candidate.rawTags?.identityAssessment as { status?: string; confidence?: number } | undefined;
+
+          // A listing/ad headline is never allowed into the outreach-ready CRM as if it were a verified company.
+          if (identityAssessment?.status === "UNRESOLVED") {
+            rejectionReasons.genericCompanyName++;
+            rejected++;
+            continue;
+          }
 
           if (isGenericCompanyName(companyName)) {
             rejectionReasons.genericCompanyName++;
