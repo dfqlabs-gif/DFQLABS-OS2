@@ -3,6 +3,7 @@ import { PersistentProspectService } from "./persistentProspectService.js";
 import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
 import { User } from "../../shared/types/index.js";
 import { SerperDiscoverySource } from "./discovery/serperSource.js";
+import { GooglePlacesDiscoverySource } from "./discovery/googlePlacesSource.js";
 import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js";
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
 import { DiscoverySource, RawCandidate, SourceQueryResult } from "./discovery/types.js";
@@ -235,6 +236,8 @@ export class LeadFinderService {
     }
 
     const sources: DiscoverySource[] = [
+      // Structured business/place search reduces reliance on web snippets and article titles.
+      new GooglePlacesDiscoverySource(),
       new SerperDiscoverySource(),
       // Public directory search can yield contactable prospects without paid Serper credits.
       // Run it before OSM, whose public records often lack phone numbers and can be slow.
