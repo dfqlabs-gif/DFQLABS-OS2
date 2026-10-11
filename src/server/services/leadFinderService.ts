@@ -252,6 +252,7 @@ export class LeadFinderService {
     };
 
     const sourceStats: Record<string, SourceQueryResult> = {};
+    const persistenceErrors: string[] = [];
 
     for (const source of sources) {
       if (created.length >= remaining) break;
@@ -373,6 +374,7 @@ export class LeadFinderService {
 
           const quality = qualityFor(scoreData.score);
 
+          let persistedLeadId: string | undefined;
           try {
             const lead = await PersistentProspectService.create({
               companyName,
@@ -388,6 +390,7 @@ export class LeadFinderService {
               serviceTier: quality
             }, user);
 
+            persistedLeadId = lead.id;
             const { error: discoveryUpdateError } = await db.from("leads").update({
               discovery_score: scoreData.score,
               discovery_quality: quality,
@@ -431,9 +434,22 @@ export class LeadFinderService {
               outreachReady: true,
               breakdown: scoreData.breakdown
             });
-          } catch {
+          } catch (error) {
             rejectionReasons.persistenceError++;
             rejected++;
+            const message = error instanceof Error ? error.message : String(error);
+            persistenceErrors.push(message.slice(0, 500));
+            // Never leave a half-created Lead Finder record in the canonical directory when
+            // its discovery metadata failed to persist. Such an orphan is visible in CRM but
+            // absent from this run's created/qualified counters—the exact inconsistency users see.
+            if (persistedLeadId) {
+              try {
+                const { error: cleanupError } = await db.from("leads").delete().eq("id", persistedLeadId);
+                if (cleanupError) persistenceErrors.push(`Cleanup failed for ${persistedLeadId}: ${cleanupError.message}`);
+              } catch (cleanupError) {
+                persistenceErrors.push(`Cleanup failed for ${persistedLeadId}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+              }
+            }
           }
         }
       }
@@ -451,7 +467,7 @@ export class LeadFinderService {
 
     const { error: finalUpdateError } = await db.from("lead_finder_runs").update({
       status: finalStatus, found_count: found, qualified_count: qualified, duplicate_count: duplicate, rejected_count: rejected,
-      stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "FINISHED", failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : undefined, statusMessage },
+      stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, persistenceErrors: persistenceErrors.slice(0, 10), phase: "FINISHED", failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : persistenceErrors.length ? "PERSISTENCE_FAILURE" : undefined, statusMessage: persistenceErrors.length ? `${statusMessage} Persistence errors: ${persistenceErrors.slice(0, 3).join(" | ")}` : statusMessage },
       completed_at: new Date().toISOString()
     }).eq("id", run.id).eq("status", "RUNNING");
     if (finalUpdateError) throw new Error("Unable to persist final Lead Finder status: " + finalUpdateError.message);
