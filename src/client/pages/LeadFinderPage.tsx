@@ -13,6 +13,24 @@ export const LeadFinderPage: React.FC = () => {
   const [scanAcceptedAt, setScanAcceptedAt] = React.useState<number | null>(null);
   const [trackedRunId, setTrackedRunId] = React.useState<string | null>(null);
   const [completionNotice, setCompletionNotice] = React.useState<any>(null);
+  const notifiedRunIds = React.useRef<Set<string>>(new Set());
+
+  const notifyRunFinished = React.useCallback((run: any) => {
+    const runId = String(run?.id || run?.runId || "");
+    if (!runId || notifiedRunIds.current.has(runId)) return;
+    notifiedRunIds.current.add(runId);
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      try {
+        const saved = Number(run.qualified_count ?? run.stats?.created ?? 0);
+        const target = Number(run.target ?? run.stats?.target ?? 30);
+        const status = String(run.status || "PARTIAL");
+        new Notification(status === "COMPLETED" ? "DFQLABS: 30-lead target reached" : "DFQLABS: Lead Finder finished", {
+          body: `${saved} qualified prospects saved in this scan against a target of ${target}. Status: ${status}.`,
+          tag: `lead-finder-${runId}`
+        });
+      } catch { /* The in-app completion dialog remains available if notifications are blocked. */ }
+    }
+  }, []);
 
   const refresh = React.useCallback(async () => {
     const [s, h] = await Promise.all([
@@ -56,15 +74,7 @@ export const LeadFinderPage: React.FC = () => {
           ));
           if (recentRun && recentRun.status !== "RUNNING") {
             setCompletionNotice(recentRun);
-            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-              try {
-                const saved = Number(recentRun.qualified_count ?? recentRun.stats?.created ?? 0);
-                const target = Number(recentRun.target ?? recentRun.stats?.target ?? 30);
-                new Notification("DFQLABS Lead Finder finished", {
-                  body: `${saved} qualified prospects saved against a target of ${target}. Status: ${recentRun.status}.`
-                });
-              } catch { /* Browser notifications are optional. */ }
-            }
+            notifyRunFinished(recentRun);
             setRunning(false);
             setScanAcceptedAt(null);
             setTrackedRunId(null);
@@ -105,11 +115,16 @@ export const LeadFinderPage: React.FC = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [running, starting, refresh, scanAcceptedAt, summary?.target, trackedRunId]);
+  }, [running, starting, refresh, scanAcceptedAt, summary?.target, trackedRunId, notifyRunFinished]);
 
   const run = async () => {
     if (running || starting) return;
     setError("");
+    setCompletionNotice(null);
+    // Ask during the user gesture so browsers are allowed to show the permission prompt.
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission().catch(() => undefined);
+    }
     setStarting(true);
     try {
       const active = await refresh();
@@ -128,7 +143,9 @@ export const LeadFinderPage: React.FC = () => {
       setScanAcceptedAt(Date.now());
       setProgress(result?.run || { id: result.runId, status: result.status || "RUNNING", target: summary?.target || 30, stats: { statusMessage: "Multi-source scan started..." } });
       if (["COMPLETED", "FAILED", "PARTIAL"].includes(result.status)) {
-        setCompletionNotice(result.run || { ...result, target: result.target || summary?.target || 30 });
+        const finishedRun = result.run || { ...result, target: result.target || summary?.target || 30 };
+        setCompletionNotice(finishedRun);
+        notifyRunFinished(finishedRun);
         setRunning(false);
         setTrackedRunId(null);
         await refresh();
@@ -191,6 +208,55 @@ export const LeadFinderPage: React.FC = () => {
 
   return (
     <section className="lead-finder-page">
+      {completionNotice && (
+        <div
+          role="presentation"
+          onClick={() => setCompletionNotice(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 10000, display: "flex",
+            alignItems: "center", justifyContent: "center", padding: "1rem",
+            background: "rgba(0, 0, 0, 0.76)", backdropFilter: "blur(5px)"
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="lead-finder-completion-title"
+            aria-describedby="lead-finder-completion-description"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(100%, 520px)", padding: "1.5rem", borderRadius: "18px",
+              border: "1px solid rgba(0, 212, 255, 0.65)", background: "#101820",
+              color: "#fff", boxShadow: "0 20px 70px rgba(0,0,0,.5)"
+            }}
+          >
+            <div className="eyebrow">DFQLABS / PROSPECTING INTELLIGENCE</div>
+            <h2 id="lead-finder-completion-title" style={{ margin: "0.6rem 0", fontSize: "1.6rem" }}>
+              {completionNotice.status === "COMPLETED" ? "Scan completed" : completionNotice.status === "PARTIAL" ? "Scan finished — target not reached" : "Scan failed"}
+            </h2>
+            <p id="lead-finder-completion-description" style={{ margin: "0 0 1rem", lineHeight: 1.6 }}>
+              <strong>{Number(completionNotice.qualified_count ?? completionNotice.stats?.created ?? 0)} qualified prospects saved</strong> in this scan against a target of {Number(completionNotice.target ?? completionNotice.stats?.target ?? 30)}.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: ".5rem", marginBottom: "1rem" }}>
+              {[
+                ["Reviewed", completionNotice.found_count ?? completionNotice.stats?.found ?? 0],
+                ["Rejected", completionNotice.rejected_count ?? completionNotice.stats?.rejected ?? 0],
+                ["Duplicates", completionNotice.duplicate_count ?? completionNotice.stats?.duplicate ?? 0]
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ padding: ".75rem .5rem", borderRadius: "10px", background: "rgba(255,255,255,.06)", textAlign: "center" }}>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 700 }}>{Number(value)}</div>
+                  <div style={{ fontSize: ".75rem", opacity: .75 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: "0 0 1.25rem", opacity: .85, lineHeight: 1.5 }}>
+              {completionNotice.stats?.statusMessage || completionNotice.message || "The run has finished. Open Source & Qualification Diagnostics to inspect provider yield."}
+            </p>
+            <button className="btn-primary" style={{ width: "100%" }} onClick={() => setCompletionNotice(null)}>View Lead Finder results</button>
+          </div>
+        </div>
+      )}
+
       <div className="lead-finder-hero">
         <div>
           <div className="eyebrow"><span className="finder-live-dot" /> DFQLABS / PROSPECTING INTELLIGENCE</div>
