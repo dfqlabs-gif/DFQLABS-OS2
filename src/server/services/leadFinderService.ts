@@ -8,6 +8,7 @@ import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
 import { DiscoverySource, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js";
+import { PublicContactEnricher } from "./discovery/publicContactEnricher.js";
 
 const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
 const SUPPLEMENTAL_NIGERIAN_MARKETS = ["Lagos", "Port Harcourt", "Ibadan", "Enugu", "Owerri", "Warri", "Uyo", "Calabar"];
@@ -239,9 +240,11 @@ export class LeadFinderService {
         }).eq("id", run.id).eq("status", "RUNNING");
         if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
         const result = await source.discoverCandidates(location, settings.industries[0] || "real estate", 40);
-        // Resolve generic property-ad headlines against the original title, snippet and source URL
-        // before qualification. The resolver is conservative and leaves uncertain identities unpromoted.
-        const resolvedCandidates = await CompanyIdentityResolver.resolve(result.candidates, location);
+        // Search snippets often omit contact details even when the business publishes a phone
+        // number on its own public website/profile. Enrich candidates before the phone qualification gate.
+        const enrichedCandidates = await PublicContactEnricher.enrich(result.candidates);
+        // Resolve generic property-ad headlines against original source evidence before qualification.
+        const resolvedCandidates = await CompanyIdentityResolver.resolve(enrichedCandidates, location);
         const resolvedResult = { ...result, candidates: resolvedCandidates };
         const priorStats = sourceStats[source.name];
         sourceStats[source.name] = priorStats ? {
