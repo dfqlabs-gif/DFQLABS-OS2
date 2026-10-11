@@ -53,11 +53,11 @@ function domain(value?: string): string {
 
 export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin">): boolean {
   const hostOf = (value?: string) => {
-    try { return new URL(value || "").hostname.toLowerCase().replace(/^www\\./, ""); } catch { return ""; }
+    try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
   };
   const hosts = [candidate.sourceUrl, candidate.website].map(hostOf).filter(Boolean);
   const socialProfile = [candidate.instagram, candidate.facebook, candidate.linkedin, candidate.sourceUrl]
-    .some((value) => /(?:^|\\.)instagram\\.com$|(?:^|\\.)facebook\\.com$|(?:^|\\.)linkedin\\.com$/i.test(hostOf(value)));
+    .some((value) => /(?:^|\.)instagram\.com$|(?:^|\.)facebook\.com$|(?:^|\.)linkedin\.com$/i.test(hostOf(value)));
   const knownDirectoryHost = hosts.some((host) =>
     /(?:^|\\.)(?:businesslist\\.com\\.ng|finelib\\.com|vconnect\\.com|yellowpages\\.ng|businessdirectory\\.ng|nigeriapropertycentre\\.com|propertypro\\.ng)$/.test(host)
   );
@@ -66,7 +66,7 @@ export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName"
   const title = normalize(candidate.sourceTitle || candidate.companyName);
   const evidence = normalize([candidate.sourceSnippet, candidate.description].filter(Boolean).join(" "));
   const directoryTitle = /^(?:list of (?:business|real estate|property) (?:companies|agencies|businesses)|real estate agencies in .{2,80}|list of business companies|property directory|business directory|company directory|directory of .+|top real estate companies(?: in .+)?)$/.test(title);
-  const directoryEvidence = /\\b(?:this directory features a list of|business directory of|browse our (?:business )?directory|owners or professionals can list (?:their )?(?:business|property)|list of real estate agencies|list of real estate companies|directory page presents a list of)\\b/.test(evidence);
+  const directoryEvidence = /\b(?:this directory features a list of|business directory of|browse our (?:business )?directory|owners or professionals can list (?:their )?(?:business|property)|list of real estate agencies|list of real estate companies|directory page presents a list of)\b/.test(evidence);
   // A social profile may use a call-to-action as its display name; resolve that profile identity instead of discarding it.
   return !socialProfile && (directoryTitle || directoryEvidence);
 }
