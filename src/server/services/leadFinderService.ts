@@ -82,7 +82,7 @@ export function scoreCandidate(input: { companyName: string; description: string
   // requested industry/location here would make every result appear relevant by default.
   const evidenceText = normalize([input.companyName, input.description].join(" ")).replace(/[_-]+/g, " ");
   const locationText = normalize(input.location);
-  const industryFit = /(real estate|property|properties|realtor|realty|developer|development|homes|estate agent|housing|property management|brokerage)/i.test(evidenceText) ? 25 : 0;
+  const industryFit = /\b(?:real estate|property|properties|realtor|realty|developer|development|homes|estate agent|housing|property management|brokerage)\b/i.test(evidenceText) ? 25 : 0;
   // Location is populated by the discovery source's market-specific search. Award geographic
   // relevance from that source context, but still require independent real-estate evidence above.
   const locationFit = /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta|uyo|calabar|enugu|ibadan|owerri|warri|port harcourt)/i.test(evidenceText)
