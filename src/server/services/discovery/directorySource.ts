@@ -63,10 +63,12 @@ export class DirectoryDiscoverySource implements DiscoverySource {
     const candidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
     const queryTemplates = [
-      `"${location}" Nigeria real estate company contact phone WhatsApp`,
-      `"${location}" property developers real estate agency contact phone Nigeria`,
-      `site:instagram.com "${location}" ("real estate" OR realtor OR property) Nigeria contact`,
-      `site:finelib.com OR site:businesslist.com.ng OR site:vconnect.com "${location}" real estate property contact`
+      `"${location}" Nigeria "${industry}" company official website contact phone WhatsApp`,
+      `"${location}" Nigeria property developer real estate agency company phone contact details`,
+      `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR homes) contact phone`,
+      `site:facebook.com "${location}" Nigeria real estate property developer agency contact`,
+      `site:finelib.com OR site:businesslist.com.ng OR site:vconnect.com "${location}" real estate property company phone`,
+      `"${location}" Nigeria "real estate" ("Ltd" OR "Limited" OR "Homes" OR "Properties") phone`
     ];
     const errors: string[] = [];
     let successfulQueries = 0;
@@ -95,7 +97,7 @@ export class DirectoryDiscoverySource implements DiscoverySource {
       if (!html || candidates.length >= maxResults) continue;
       for (const result of extractLinks(html)) {
         if (candidates.length >= maxResults) break;
-        if (!looksLikeCompanyIdentity(result.title)) continue;
+        // Keep generic/ad-style headlines for the identity resolver; dropping them here loses useful snippets and source evidence.
         let parsedUrl: URL;
         try { parsedUrl = new URL(result.url); } catch { continue; }
         if (/^(?:html\.)?duckduckgo\.com$/i.test(parsedUrl.hostname)) continue;
