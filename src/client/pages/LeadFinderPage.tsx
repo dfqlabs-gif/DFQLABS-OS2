@@ -179,6 +179,7 @@ export const LeadFinderPage: React.FC = () => {
   }, [running]);
 
   const latestRun = history[0] || null;
+  const displayedCompletion = latestRun && latestRun.status !== "RUNNING" ? latestRun : completionNotice;
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
   const sourceStats = latestRun?.stats?.sourceStats || {};
 
@@ -244,18 +245,18 @@ export const LeadFinderPage: React.FC = () => {
         </div>
       )}
 
-      {completionNotice && (
-        <div className={completionNotice.status === "FAILED" ? "lead-finder-error" : "finder-diagnostics-note"} role="status" aria-live="polite">
+      {displayedCompletion && (
+        <div className={displayedCompletion.status === "FAILED" ? "lead-finder-error" : "finder-diagnostics-note"} role="status" aria-live="polite">
           <strong>
-            {completionNotice.status === "COMPLETED" ? "Scan completed." : completionNotice.status === "PARTIAL" ? "Scan finished with partial results." : "Scan finished with an error."}
+            {displayedCompletion.status === "COMPLETED" ? "Scan completed." : displayedCompletion.status === "PARTIAL" ? "Scan finished with partial results." : "Scan finished with an error."}
           </strong>
           <span>
-            {Number(completionNotice.qualified_count ?? completionNotice.stats?.created ?? 0)} qualified prospects saved against a target of {Number(completionNotice.target ?? completionNotice.stats?.target ?? 30)}.
-            {" "}{Number(completionNotice.found_count ?? completionNotice.stats?.found ?? 0)} candidates reviewed;
-            {" "}{Number(completionNotice.rejected_count ?? completionNotice.stats?.rejected ?? 0)} rejected;
-            {" "}{Number(completionNotice.duplicate_count ?? completionNotice.stats?.duplicate ?? 0)} duplicates.
+            {Number(displayedCompletion.qualified_count ?? displayedCompletion.stats?.created ?? 0)} qualified prospects saved against a target of {Number(displayedCompletion.target ?? displayedCompletion.stats?.target ?? 30)}.
+            {" "}{Number(displayedCompletion.found_count ?? displayedCompletion.stats?.found ?? 0)} candidates reviewed;
+            {" "}{Number(displayedCompletion.rejected_count ?? displayedCompletion.stats?.rejected ?? 0)} rejected;
+            {" "}{Number(displayedCompletion.duplicate_count ?? displayedCompletion.stats?.duplicate ?? 0)} duplicates.
           </span>
-          <span>{completionNotice.stats?.statusMessage || completionNotice.message || "See Prospecting History and Source & Qualification Diagnostics for provider details."}</span>
+          <span>{displayedCompletion.stats?.statusMessage || displayedCompletion.message || "See Prospecting History and Source & Qualification Diagnostics for provider details."}</span>
         </div>
       )}
 
