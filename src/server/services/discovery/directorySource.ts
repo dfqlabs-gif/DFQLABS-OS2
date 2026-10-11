@@ -85,11 +85,18 @@ export class DirectoryDiscoverySource implements DiscoverySource {
       if (!html || candidates.length >= maxResults) continue;
       for (const result of extractLinks(html)) {
         if (candidates.length >= maxResults) break;
-        // Keep generic/ad-style headlines for the identity resolver; dropping them here loses useful snippets and source evidence.
+        // Preserve ambiguous titles when their snippet or social profile can identify the publisher,
+        // but reject obvious property-ad headlines that contain no company identity evidence at all.
         let parsedUrl: URL;
         try { parsedUrl = new URL(result.url); } catch { continue; }
-        if (/^(?:html\.)?duckduckgo\.com$/i.test(parsedUrl.hostname)) continue;
-        const canonicalUrl = `${parsedUrl.protocol}//${parsedUrl.hostname.toLowerCase()}${parsedUrl.pathname.replace(/\/$/, "")}`;
+        if (/^(?:html\\.)?duckduckgo\\.com$/i.test(parsedUrl.hostname)) continue;
+        const resultHost = parsedUrl.hostname.toLowerCase().replace(/^www\\./, "");
+        const socialProfile = /^(?:instagram|facebook|linkedin)\\.com$/.test(resultHost) || /\\.(?:instagram|facebook|linkedin)\\.com$/.test(resultHost);
+        const obviousListingTitle = /^(?:verified\\s+)?(?:house|land|plot|apartment|flat|duplex|property|properties|home|building|two[- ]storey|two[- ]story)\\b/i.test(result.title)
+          || /\\b(?:for sale|for rent|to let|land listings?|property listings?|two[- ]storey|two[- ]story)\\b/i.test(result.title);
+        const publisherEvidence = /\\b(?:limited|ltd\\.?|plc|homes?|realty|properties|estates?|developers?|realtors?|shelters|holdings|ventures|group)\\b/i.test(result.snippet);
+        if (obviousListingTitle && !publisherEvidence && !socialProfile) continue;
+        const canonicalUrl = `${parsedUrl.protocol}//${parsedUrl.hostname.toLowerCase()}${parsedUrl.pathname.replace(/\\/$/, "")}`;
         if (seenUrls.has(canonicalUrl)) continue;
         seenUrls.add(canonicalUrl);
 
