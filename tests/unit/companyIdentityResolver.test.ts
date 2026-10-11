@@ -41,6 +41,27 @@ describe("CompanyIdentityResolver", () => {
     expect(resolved.rawTags?.identityAssessment).toMatchObject({ status: "UNRESOLVED" });
   });
 
+  it("treats call-to-action page titles as unresolved company names", async () => {
+    const [resolved] = await CompanyIdentityResolver.resolve([candidate({
+      companyName: "List your property",
+      sourceTitle: "List your property",
+      description: "Post your property for sale or rent. Contact our team.",
+      sourceSnippet: "Owners or professionals can list their property on this platform."
+    })], "Abuja");
+    expect(resolved.companyName).toBe("List your property");
+    expect(resolved.rawTags?.identityAssessment).toMatchObject({ status: "UNRESOLVED" });
+  });
+
+  it("extracts a visibly published phone and email from source evidence without inventing contact details", async () => {
+    const [resolved] = await CompanyIdentityResolver.resolve([candidate({
+      companyName: "Abuja Property Ward",
+      sourceTitle: "Abuja Property Ward",
+      sourceSnippet: "Real estate services in Abuja. Call 0802 0771 659 or email hello@abujapropertyward.ng."
+    })], "Abuja");
+    expect(resolved.phone).toBe("0802 0771 659");
+    expect(resolved.email).toBe("hello@abujapropertyward.ng");
+  });
+
   it("preserves a credible company title and the original source headline", async () => {
     const [resolved] = await CompanyIdentityResolver.resolve([candidate({
       companyName: "Savy Real Estate",
