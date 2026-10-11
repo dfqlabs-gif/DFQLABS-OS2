@@ -109,10 +109,12 @@ export class ApiClient {
     });
   }
 
-  public static getProspects(query?: { search?: string; stage?: string }): Promise<{ leads: Lead[]; total: number }> {
+  public static getProspects(query?: { search?: string; stage?: string; limit?: number; page?: number }): Promise<{ leads: Lead[]; total: number; page?: number; totalPages?: number }> {
     const params = new URLSearchParams();
     if (query?.search) params.append("search", query.search);
     if (query?.stage) params.append("stage", query.stage);
+    params.append("limit", String(query?.limit ?? 100));
+    params.append("page", String(query?.page ?? 1));
     return this.request(`/api/v1/prospects?${params.toString()}`);
   }
 
