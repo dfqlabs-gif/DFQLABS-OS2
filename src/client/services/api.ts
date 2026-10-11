@@ -58,7 +58,11 @@ export class ApiClient {
       throw new Error(detail);
     }
 
-    return res.json();
+    if (res.status === 204) return undefined as T;
+    const responseText = await res.text();
+    if (!responseText) return undefined as T;
+    try { return JSON.parse(responseText) as T; }
+    catch { throw new Error("The server returned an invalid response."); }
   }
 
   public static login(email: string, password: string): Promise<{ token: string; user: User; seat?: OutreachSeat }> {
