@@ -53,10 +53,12 @@ function domain(value?: string): string {
   } catch { return ""; }
 }
 
-export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin">): boolean {
+export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin" | "sourceFamily">): boolean {
   const hostOf = (value?: string) => {
     try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
   };
+  // NPC is a listing platform, but this adapter supplies the advertiser identity, not the listing headline.
+  if (candidate.sourceFamily === "APIFY_NPC") return false;
   const hosts = [candidate.sourceUrl, candidate.website].map(hostOf).filter(Boolean);
   const socialProfile = [candidate.instagram, candidate.facebook, candidate.linkedin, candidate.sourceUrl]
     .some((value) => /(?:^|\.)instagram\.com$|(?:^|\.)facebook\.com$|(?:^|\.)linkedin\.com$/i.test(hostOf(value)));
@@ -87,7 +89,7 @@ function isGenericCompanyName(value: string): boolean {
   // Search results often return a listing title or a seller's sentence rather than a company identity.
   if (/^(?:please contact|contact|call|whatsapp|we are|we're|we offer|we deal|we are into|for more information|buy|sell|rent|looking for)\b/i.test(raw)) return true;
   if (/^(?:house|land|plot|apartment|flat|duplex|property|properties|home|building)\s+(?:for sale|for rent|to let|available)\b/i.test(raw)) return true;
-  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent)\b/i.test(raw)) return true;
+  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent|audit services|statutory audit|external audit|accounting services|tax consultancy|legal services|law firm)\b/i.test(raw)) return true;
   if (/\b(?:0[789][01]\d{8}|\+?234[789][01]\d{8})\b/.test(raw)) return true;
   if (/[!?]/.test(raw) || /\.\s+[A-Z]/.test(value)) return true;
   return /^(?:real estate|property|properties|realty|realtor|housing|estate|luxury real estate|real estate company|property company|real estate agency|property agency|real estate developer|property developer|real estate investment company|real estate companies|property companies|real estate agencies|property agencies|real estate developers|best real estate companies|top real estate companies|unknown real estate company)(?: in .*)?$/.test(name);
