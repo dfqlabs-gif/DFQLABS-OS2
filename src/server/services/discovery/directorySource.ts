@@ -16,18 +16,6 @@ function cleanText(value: string): string {
     .trim();
 }
 
-function looksLikeCompanyIdentity(title: string): boolean {
-  const value = title.trim();
-  const normalized = value.toLowerCase().replace(/\s+/g, " ");
-  if (value.length < 4 || value.length > 110) return false;
-  if (/^(?:please contact|contact|call|whatsapp|we are|we're|we offer|we deal|we are into|for more information|buy|sell|rent|looking for)\b/i.test(normalized)) return false;
-  if (/^(?:house|land|plot|apartment|flat|duplex|property|properties|home|building)\s+(?:for sale|for rent|to let|available)\b/i.test(normalized)) return false;
-  if (/\b(?:for sale|for rent|to let|please contact|for more information|call now|click here|available for rent)\b/i.test(normalized)) return false;
-  if (/\b(?:0[789][01]\d{8}|\+?234[789][01]\d{8})\b/.test(normalized)) return false;
-  if (/[!?]/.test(value)) return false;
-  return true;
-}
-
 function extractLinks(html: string): SearchResultLink[] {
   const links = [...html.matchAll(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)];
   const snippets = [...html.matchAll(/<(?:a|div|span)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|span)>/gi)];
@@ -63,10 +51,12 @@ export class DirectoryDiscoverySource implements DiscoverySource {
     const candidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
     const queryTemplates = [
-      `"${location}" Nigeria real estate company contact phone WhatsApp`,
-      `"${location}" property developers real estate agency contact phone Nigeria`,
-      `site:instagram.com "${location}" ("real estate" OR realtor OR property) Nigeria contact`,
-      `site:finelib.com OR site:businesslist.com.ng OR site:vconnect.com "${location}" real estate property contact`
+      `"${location}" Nigeria "${industry}" company official website contact phone WhatsApp`,
+      `"${location}" Nigeria property developer real estate agency company phone contact details`,
+      `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR homes) contact phone`,
+      `site:facebook.com "${location}" Nigeria real estate property developer agency contact`,
+      `site:finelib.com OR site:businesslist.com.ng OR site:vconnect.com "${location}" real estate property company phone`,
+      `"${location}" Nigeria "real estate" ("Ltd" OR "Limited" OR "Homes" OR "Properties") phone`
     ];
     const errors: string[] = [];
     let successfulQueries = 0;
@@ -95,10 +85,17 @@ export class DirectoryDiscoverySource implements DiscoverySource {
       if (!html || candidates.length >= maxResults) continue;
       for (const result of extractLinks(html)) {
         if (candidates.length >= maxResults) break;
-        if (!looksLikeCompanyIdentity(result.title)) continue;
+        // Preserve ambiguous titles when their snippet or social profile can identify the publisher,
+        // but reject obvious property-ad headlines that contain no company identity evidence at all.
         let parsedUrl: URL;
         try { parsedUrl = new URL(result.url); } catch { continue; }
         if (/^(?:html\.)?duckduckgo\.com$/i.test(parsedUrl.hostname)) continue;
+        const resultHost = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
+        const socialProfile = /^(?:instagram|facebook|linkedin)\.com$/.test(resultHost) || /\.(?:instagram|facebook|linkedin)\.com$/.test(resultHost);
+        const obviousListingTitle = /^(?:verified\s+)?(?:house|land|plot|apartment|flat|duplex|property|properties|home|building|two[- ]storey|two[- ]story)\b/i.test(result.title)
+          || /\b(?:for sale|for rent|to let|land listings?|property listings?|two[- ]storey|two[- ]story)\b/i.test(result.title);
+        const publisherEvidence = /\b(?:limited|ltd\.?|plc|homes?|realty|properties|estates?|developers?|realtors?|shelters|holdings|ventures|group)\b/i.test(result.snippet);
+        if (obviousListingTitle && !publisherEvidence && !socialProfile) continue;
         const canonicalUrl = `${parsedUrl.protocol}//${parsedUrl.hostname.toLowerCase()}${parsedUrl.pathname.replace(/\/$/, "")}`;
         if (seenUrls.has(canonicalUrl)) continue;
         seenUrls.add(canonicalUrl);

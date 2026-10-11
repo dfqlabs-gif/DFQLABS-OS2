@@ -18,7 +18,7 @@ describe("DirectoryDiscoverySource", () => {
 
     const result = await new DirectoryDiscoverySource().discoverCandidates("Abuja", "real estate", 40);
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     expect(result.succeeded).toBe(true);
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].companyName).toBe("Bright Homes Realty");

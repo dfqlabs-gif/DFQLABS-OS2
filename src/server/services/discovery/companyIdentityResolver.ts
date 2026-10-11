@@ -1,0 +1,115 @@
+import { env } from "../../config/env.js";
+import { RawCandidate } from "./types.js";
+
+export interface IdentityAssessment {
+  companyName: string;
+  confidence: number;
+  reason: string;
+  resolvedBy: "RULE" | "AI" | "UNCHANGED";
+}
+
+const GENERIC_TITLE = /^(?:verified\s+)?(?:land|property|properties|house|apartment|duplex|two[- ]storey|two[- ]story|real estate company|real estate agency|property developer|real estate developer|luxury homes?|property listings?|land listings?|verified listings?)(?:\s+(?:for sale|in|at|available|abuja|lagos|uyo|benin city).*)?$/i;
+const AD_TITLE = /\b(?:verified land listings?|property listings?|for sale|for rent|two[- ]storey|two[- ]story|price\s*[:₦]?\s*\d|₦\s?[\d,]+|verified listings?)\b/i;
+const ORG_SUFFIX = /\b([A-Z][A-Za-z&'.-]*(?:\s+[A-Z][A-Za-z&'.-]*){0,4}\s+(?:Homes?|Estates?|Realty|Properties|Property|Developments?|Developers?|Realtors?|Holdings|Group|Limited|Ltd\.?|PLC|Ventures|Shelters|Housing))\b/g;
+
+function clean(value: string): string {
+  return value.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+}
+
+function plausibleName(value: string): boolean {
+  const name = clean(value).replace(/\s*[|–—-]\s*.*$/, "").trim();
+  if (name.length < 4 || name.length > 90) return false;
+  if (GENERIC_TITLE.test(name) || AD_TITLE.test(name)) return false;
+  if (/^(?:contact|call|whatsapp|for inquiries|verified|real estate company|property listings?)\b/i.test(name)) return false;
+  return /[a-z]/i.test(name) && /\s/.test(name);
+}
+
+function ruleBasedName(candidate: RawCandidate): string | null {
+  const evidence = [candidate.sourceSnippet, candidate.description, candidate.sourceTitle].filter(Boolean).join(" ");
+  const matches = [...evidence.matchAll(ORG_SUFFIX)].map((m) => m[1].trim());
+  const name = matches.find(plausibleName);
+  if (name) return name;
+  const title = (candidate.sourceTitle || candidate.companyName).split(/\s[|–—-]\s/)[0].trim();
+  if (!GENERIC_TITLE.test(title) && !AD_TITLE.test(title) && plausibleName(title)) return title;
+  return null;
+}
+
+async function assessBatch(candidates: RawCandidate[], location: string): Promise<Map<number, IdentityAssessment>> {
+  const results = new Map<number, IdentityAssessment>();
+  candidates.forEach((candidate, index) => {
+    const ruleName = ruleBasedName(candidate);
+    if (ruleName) results.set(index, { companyName: ruleName, confidence: 0.82, reason: "Organization name extracted from source evidence.", resolvedBy: "RULE" });
+  });
+
+  if (!env.GEMINI_API_KEY) return results;
+  const unresolved = candidates.map((candidate, index) => ({ candidate, index })).filter(({ candidate, index }) =>
+    !results.has(index) && (GENERIC_TITLE.test(candidate.companyName) || AD_TITLE.test(candidate.companyName) || candidate.companyName.length > 75)
+  ).slice(0, 15);
+  if (!unresolved.length) return results;
+
+  const payload = unresolved.map(({ candidate }, index) => ({
+    id: index,
+    title: candidate.sourceTitle || candidate.companyName,
+    snippet: (candidate.sourceSnippet || candidate.description || "").slice(0, 700),
+    sourceUrl: candidate.sourceUrl || candidate.website || candidate.instagram || "",
+    website: candidate.website || "",
+    instagram: candidate.instagram || "",
+    location: candidate.location || location
+  }));
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(12000),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `You are a conservative business-identity quality assessor for a Nigerian real-estate prospecting system. For each record, infer the real estate company that published or owns the listing only if the supplied evidence directly supports it. A property-ad headline, search query, generic description, location, price or listing category is NOT a company name. Do not invent names or use a different company mentioned incidentally. Prefer explicit company names in snippets and source/profile identity. If uncertain, return companyName as an empty string and confidence 0. Return JSON only in this shape: {"results":[{"id":0,"companyName":"...","confidence":0.0,"reason":"short evidence-based reason"}]}. Confidence must be 0 to 1. Only use confidence >= 0.80 when evidence explicitly connects the company to the source/listing. Location context: ${location}. Records: ${JSON.stringify(payload)}` }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1600, responseMimeType: "application/json" }
+      })
+    });
+    if (!response.ok) return results;
+    const json = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const text = json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+    const parsed = JSON.parse(text) as { results?: Array<{ id: number; companyName: string; confidence: number; reason?: string }> };
+    for (const item of parsed.results || []) {
+      if (!Number.isInteger(item.id) || item.id < 0 || item.id >= unresolved.length) continue;
+      const name = clean(item.companyName || "").replace(/\s*[|–—-]\s*.*$/, "").trim();
+      const confidence = Number(item.confidence);
+      if (confidence < 0.8 || !plausibleName(name)) continue;
+      const originalIndex = unresolved[item.id].index;
+      results.set(originalIndex, { companyName: name, confidence, reason: clean(item.reason || "Identity supported by source evidence."), resolvedBy: "AI" });
+    }
+  } catch {
+    // Conservative deterministic results remain available when AI is unavailable or returns malformed output.
+  }
+  return results;
+}
+
+export class CompanyIdentityResolver {
+  static async resolve(candidates: RawCandidate[], location: string): Promise<RawCandidate[]> {
+    if (!candidates.length) return candidates;
+    const assessments = await assessBatch(candidates, location);
+    return candidates.map((candidate, index) => {
+      const assessment = assessments.get(index);
+      if (!assessment) return {
+        ...candidate,
+        rawTags: { ...(candidate.rawTags || {}), identityAssessment: { status: "UNRESOLVED", originalTitle: candidate.sourceTitle || candidate.companyName } }
+      };
+      return {
+        ...candidate,
+        companyName: assessment.companyName,
+        rawTags: {
+          ...(candidate.rawTags || {}),
+          identityAssessment: {
+            status: "RESOLVED",
+            confidence: assessment.confidence,
+            resolvedBy: assessment.resolvedBy,
+            reason: assessment.reason,
+            originalTitle: candidate.sourceTitle || candidate.companyName,
+            originalCompanyName: candidate.companyName
+          }
+        }
+      };
+    });
+  }
+}

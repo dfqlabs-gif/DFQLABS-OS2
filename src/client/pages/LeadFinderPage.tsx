@@ -12,6 +12,7 @@ export const LeadFinderPage: React.FC = () => {
   const [progress, setProgress] = React.useState<any>(null);
   const [scanAcceptedAt, setScanAcceptedAt] = React.useState<number | null>(null);
   const [trackedRunId, setTrackedRunId] = React.useState<string | null>(null);
+  const [completionNotice, setCompletionNotice] = React.useState<any>(null);
 
   const refresh = React.useCallback(async () => {
     const [s, h] = await Promise.all([
@@ -54,6 +55,16 @@ export const LeadFinderPage: React.FC = () => {
             r.created_at && new Date(r.created_at).getTime() >= acceptedAt
           ));
           if (recentRun && recentRun.status !== "RUNNING") {
+            setCompletionNotice(recentRun);
+            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+              try {
+                const saved = Number(recentRun.qualified_count ?? recentRun.stats?.created ?? 0);
+                const target = Number(recentRun.target ?? recentRun.stats?.target ?? 30);
+                new Notification("DFQLABS Lead Finder finished", {
+                  body: `${saved} qualified prospects saved against a target of ${target}. Status: ${recentRun.status}.`
+                });
+              } catch { /* Browser notifications are optional. */ }
+            }
             setRunning(false);
             setScanAcceptedAt(null);
             setTrackedRunId(null);
@@ -117,6 +128,7 @@ export const LeadFinderPage: React.FC = () => {
       setScanAcceptedAt(Date.now());
       setProgress(result?.run || { id: result.runId, status: result.status || "RUNNING", target: summary?.target || 30, stats: { statusMessage: "Multi-source scan started..." } });
       if (["COMPLETED", "FAILED", "PARTIAL"].includes(result.status)) {
+        setCompletionNotice(result.run || { ...result, target: result.target || summary?.target || 30 });
         setRunning(false);
         setTrackedRunId(null);
         await refresh();
@@ -167,6 +179,7 @@ export const LeadFinderPage: React.FC = () => {
   }, [running]);
 
   const latestRun = history[0] || null;
+  const displayedCompletion = latestRun && latestRun.status !== "RUNNING" ? latestRun : completionNotice;
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
   const sourceStats = latestRun?.stats?.sourceStats || {};
 
@@ -229,6 +242,21 @@ export const LeadFinderPage: React.FC = () => {
       {serperExhausted && (
         <div className="lead-finder-error" style={{ background: "rgba(245, 158, 11, 0.15)", borderColor: "#F59E0B", color: "#F59E0B" }}>
           ⚠️ Serper search provider credits are exhausted. The engine is continuing discovery using OpenStreetMap and public directories.
+        </div>
+      )}
+
+      {displayedCompletion && (
+        <div className={displayedCompletion.status === "FAILED" ? "lead-finder-error" : "finder-diagnostics-note"} role="status" aria-live="polite">
+          <strong>
+            {displayedCompletion.status === "COMPLETED" ? "Scan completed." : displayedCompletion.status === "PARTIAL" ? "Scan finished with partial results." : "Scan finished with an error."}
+          </strong>
+          <span>
+            {Number(displayedCompletion.qualified_count ?? displayedCompletion.stats?.created ?? 0)} qualified prospects saved against a target of {Number(displayedCompletion.target ?? displayedCompletion.stats?.target ?? 30)}.
+            {" "}{Number(displayedCompletion.found_count ?? displayedCompletion.stats?.found ?? 0)} candidates reviewed;
+            {" "}{Number(displayedCompletion.rejected_count ?? displayedCompletion.stats?.rejected ?? 0)} rejected;
+            {" "}{Number(displayedCompletion.duplicate_count ?? displayedCompletion.stats?.duplicate ?? 0)} duplicates.
+          </span>
+          <span>{displayedCompletion.stats?.statusMessage || displayedCompletion.message || "See Prospecting History and Source & Qualification Diagnostics for provider details."}</span>
         </div>
       )}
 
