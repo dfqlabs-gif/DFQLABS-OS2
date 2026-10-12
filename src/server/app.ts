@@ -40,6 +40,15 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(pinoHttp({ logger }));
 
+  // Lead, run-history, and dashboard API responses must always reflect current server state.
+  // Prevent browsers/proxies from revalidating JSON endpoints into confusing 304 responses.
+  app.use("/api/v1", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  });
+
   app.get("/health", async (_req, res) => {
     const dbReady = await isSupabaseConnected();
     res.status(200).json({
