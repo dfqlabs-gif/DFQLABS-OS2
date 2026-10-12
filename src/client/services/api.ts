@@ -45,8 +45,11 @@ export class ApiClient {
       ...(options.headers as Record<string, string>)
     };
 
+    // API responses are authoritative live state, not cacheable page assets.
+    // Avoid conditional requests returning 304 to JSON callers and masking fresh run state.
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
+      cache: options.cache ?? "no-store",
       headers
     });
 
@@ -61,8 +64,17 @@ export class ApiClient {
     if (res.status === 204) return undefined as T;
     const responseText = await res.text();
     if (!responseText) return undefined as T;
-    try { return JSON.parse(responseText) as T; }
-    catch { throw new Error("The server returned an invalid response."); }
+    try {
+      return JSON.parse(responseText) as T;
+    } catch {
+      const contentType = res.headers.get("content-type") || "unknown content type";
+      const preview = responseText.replace(/\s+/g, " ").slice(0, 240);
+      const looksLikeHtml = /text\/html/i.test(contentType) || /^\s*(?:<!doctype html|<html[\s>])/i.test(responseText);
+      if (looksLikeHtml) {
+        throw new Error(`The API returned an HTML page instead of JSON (HTTP ${res.status}). This usually indicates a deployment or routing mismatch. Response preview: ${preview}`);
+      }
+      throw new Error(`The server returned malformed JSON (HTTP ${res.status}; ${contentType}). Response preview: ${preview || "[empty]"}`);
+    }
   }
 
   public static login(email: string, password: string): Promise<{ token: string; user: User; seat?: OutreachSeat }> {
