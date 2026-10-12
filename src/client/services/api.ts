@@ -68,8 +68,8 @@ export class ApiClient {
       return JSON.parse(responseText) as T;
     } catch {
       const contentType = res.headers.get("content-type") || "unknown content type";
-      const preview = responseText.replace(/\\s+/g, " ").slice(0, 240);
-      const looksLikeHtml = /text\\/html/i.test(contentType) || /^\\s*(?:<!doctype html|<html[\\s>])/i.test(responseText);
+      const preview = responseText.replace(/\s+/g, " ").slice(0, 240);
+      const looksLikeHtml = /text\/html/i.test(contentType) || /^\s*(?:<!doctype html|<html[\s>])/i.test(responseText);
       if (looksLikeHtml) {
         throw new Error(`The API returned an HTML page instead of JSON (HTTP ${res.status}). This usually indicates a deployment or routing mismatch. Response preview: ${preview}`);
       }
