@@ -939,3 +939,6 @@ button { -webkit-tap-highlight-color:transparent; }
 .review-table td small { margin-top: 5px; color: var(--text-muted); line-height: 1.45; }
 .review-outcome { display: inline-block; border: 1px solid var(--border-color); border-radius: 5px; padding: 3px 6px; font-size: 10px; font-weight: 700; }
 @media (max-width: 760px) { .directory-header-actions { justify-content: flex-start; width: 100%; } .directory-pagination { align-items: flex-start; flex-direction: column; } .review-modal { padding: 14px; } .review-modal-head h2 { font-size: 18px; } }
+
+.candidate-approve-button { display: block; margin-top: 10px; padding: 7px 10px; white-space: nowrap; font-size: 11px; }
+.review-table td .candidate-approve-button:disabled { opacity: .55; cursor: wait; }
