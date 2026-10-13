@@ -137,10 +137,14 @@ export class LeadFinderService {
     const reviewed = Array.isArray(stats.reviewedCandidates) ? [...stats.reviewedCandidates as Array<Record<string, unknown>>] : [];
     if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= reviewed.length) throw new Error("Candidate review record not found. Refresh the run diagnostics and try again.");
     const candidate = { ...reviewed[candidateIndex] };
-    if (candidate.outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
-    if (candidate.outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
-    if (candidate.outcome === "DUPLICATE" || candidate.category === "duplicateIdentity") throw new Error("This candidate was marked as a duplicate. Open the existing prospect in the Lead Directory instead of creating another record.");
-    if (candidate.outcome !== "REJECTED") throw new Error("Only rejected candidates can be manually approved.");
+    const outcome = String(candidate.outcome || "").trim().toUpperCase();
+    const category = String(candidate.category || "").trim();
+    if (outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
+    if (outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
+    if (outcome === "DUPLICATE" || category === "duplicateIdentity") throw new Error("This candidate was marked as a duplicate. Open the existing prospect in the Lead Directory instead of creating another record.");
+    // The audit trail can contain rejected candidates with different or future outcome labels.
+    // Allow founder review of any unresolved candidate, while retaining hard duplicate protection
+    // and the canonical CRM duplicate check below.
     const companyName = (companyNameOverride || String(candidate.companyName || "")).trim();
     if (companyName.length < 3 || companyName.length > 160) throw new Error("Enter a valid company name between 3 and 160 characters.");
     const rawPhone = String(candidate.contactPhone || "").trim();
