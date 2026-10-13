@@ -52,7 +52,7 @@ export class DirectoryDiscoverySource implements DiscoverySource {
     const seenUrls = new Set<string>();
     const industryTerms = [...new Set(industry.split(";").map((term) => term.trim()).filter(Boolean))];
     const industryQuery = industryTerms.length
-      ? "(" + industryTerms.map((term) => "\"" + term.replace(/\"/g, "") + "\"").join(" OR ") + ")"
+      ? "(" + industryTerms.map((term) => "\"" + term.replace(/"/g, "") + "\"").join(" OR ") + ")"
       : '("real estate" OR realtor OR property OR developer)';
     const queryTemplates = [
       `"${location}" Nigeria ${industryQuery} company official website contact phone WhatsApp`,
