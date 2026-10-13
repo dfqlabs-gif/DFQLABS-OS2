@@ -100,12 +100,13 @@ function qualityFor(score: number): Candidate["quality"] {
   return "MEDIUM";
 }
 
-export function scoreCandidate(input: { companyName: string; description: string; location: string; industry: string; website?: string; instagram?: string; email?: string; phone?: string }) {
-  // Score evidence from the discovered business, not the search query. Including the
-  // requested industry/location here would make every result appear relevant by default.
-  const evidenceText = normalize([input.companyName, input.description].join(" ")).replace(/[_-]+/g, " ");
+export function scoreCandidate(input: { companyName: string; description: string; location: string; industry: string; website?: string; instagram?: string; email?: string; phone?: string; sourceTitle?: string; sourceSnippet?: string }) {
+  // Use evidence actually returned for this result. Search-result titles and snippets often
+  // explicitly identify the company as a real-estate developer/agency even when the shortened
+  // display name does not. Do not use input.industry: it is the query, not independent evidence.
+  const evidenceText = normalize([input.companyName, input.description, input.sourceTitle, input.sourceSnippet].filter(Boolean).join(" ")).replace(/[_-]+/g, " ");
   const locationText = normalize(input.location);
-  const industryFit = /\b(?:real estate|property|properties|realtor|realty|developer|development|homes|estate agent|housing|property management|brokerage)\b/i.test(evidenceText) ? 25 : 0;
+  const industryFit = /\b(?:real estate|property|properties|realtors?|realty|developers?|development|homes?|home builders?|estate agents?|estate agency|housing|property management|brokerage|residential|commercial property|real estate investment)\b/i.test(evidenceText) ? 25 : 0;
   // Location is populated by the discovery source's market-specific search. Award geographic
   // relevance from that source context, but still require independent real-estate evidence above.
   const locationFit = /(nigeria|abuja|lagos|kano|kaduna|jos|asaba|benin|akwa ibom|delta|uyo|calabar|enugu|ibadan|owerri|warri|port harcourt)/i.test(evidenceText)
@@ -430,6 +431,8 @@ export class LeadFinderService {
           const scoreData = scoreCandidate({
             companyName,
             description: candidate.description || "",
+            sourceTitle: candidate.sourceTitle || "",
+            sourceSnippet: candidate.sourceSnippet || "",
             location: candidate.location || location,
             industry: settings.industries[0] || "real estate",
             website: candidate.website,
