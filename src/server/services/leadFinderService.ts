@@ -327,7 +327,7 @@ export class LeadFinderService {
     const reviewedCandidates: Array<Record<string, unknown>> = [];
     const recordReview = (candidate: RawCandidate, outcome: string, reason?: string, normalizedPhone?: string) => {
       if (reviewedCandidates.length >= 500) return;
-      const category = outcome === "DUPLICATE" ? "duplicateIdentity" : /generic|identity could not/i.test(reason || "") ? "genericCompanyName" : /invalid Nigerian mobile|phone number/i.test(reason || "") ? "invalidNigeriaPhone" : /score .* below|insufficient evidence/i.test(reason || "") ? "belowMinimumScore" : /Directory\/search-results/i.test(reason || "") ? "directoryPage" : "other";
+      const category = outcome === "DUPLICATE" ? "duplicateIdentity" : outcome === "POTENTIAL_DUPLICATE" ? "potentialDuplicate" : /generic|identity could not/i.test(reason || "") ? "genericCompanyName" : /invalid Nigerian mobile|phone number/i.test(reason || "") ? "invalidNigeriaPhone" : /score .* below|insufficient evidence/i.test(reason || "") ? "belowMinimumScore" : /Directory\/search-results/i.test(reason || "") ? "directoryPage" : "other";
       reviewedCandidates.push({
         reviewId: crypto.randomUUID(),
         companyName: candidate.companyName || candidate.sourceTitle || "Unnamed candidate",
@@ -420,16 +420,25 @@ export class LeadFinderService {
             recordReview(candidate, "REJECTED", "Company name is empty or could not be normalized");
             continue;
           }
-          // A name-only match is not proof of identity: similarly named companies can be distinct.
-          // Mark it as a potential duplicate for human review, but do not silently discard it.
-          if (existing.companyNames.has(companyKey) || seenCompanyNames.has(companyKey)) {
-            rejected++;
-            recordReview(candidate, "POTENTIAL_DUPLICATE", "Company name matches an existing lead or another candidate, but no exact contact/website/social identity has confirmed a duplicate. Review before approval.");
+          const phoneValidation = validateNigerianMobilePhone(candidate.phone);
+          const validPhone = phoneValidation.isValid ? phoneValidation.normalized : undefined;
+          const identifiers = [validPhone || "", candidate.email ? String(candidate.email).trim().toLowerCase() : "", candidate.website ? domain(candidate.website) : "", candidate.instagram ? normalizeSocialIdentifier(candidate.instagram) : ""].filter(Boolean).map(normalize);
+
+          // Only an exact contact, email, website, or social identity match is a confirmed duplicate.
+          // Check these first so a shared name never masks stronger identity evidence.
+          if (identifiers.some((id) => existing.contactIdentifiers.has(id) || existing.socialIdentifiers.has(id) || seenContactIdentifiers.has(id))) {
+            duplicate++;
+            rejectionReasons.duplicateIdentity++;
+            recordReview(candidate, "DUPLICATE", "Confirmed duplicate: exact normalized phone, email, website, or Instagram identity already exists", validPhone);
             continue;
           }
 
-          const phoneValidation = validateNigerianMobilePhone(candidate.phone);
-          const validPhone = phoneValidation.isValid ? phoneValidation.normalized : undefined;
+          // A company-name match alone is not proof of identity. Keep it visible for Founder review.
+          if (existing.companyNames.has(companyKey) || seenCompanyNames.has(companyKey)) {
+            rejected++;
+            recordReview(candidate, "POTENTIAL_DUPLICATE", "Company name matches an existing lead or another candidate, but no exact contact, email, website, or Instagram identity confirms a duplicate. Review the existing record before approval.", validPhone);
+            continue;
+          }
 
           if (!validPhone) {
             rejectionReasons.invalidNigeriaPhone++;
@@ -438,14 +447,6 @@ export class LeadFinderService {
             continue;
           }
 
-          const identifiers = [validPhone, candidate.email ? String(candidate.email).trim().toLowerCase() : "", candidate.website ? domain(candidate.website) : "", candidate.instagram ? normalizeSocialIdentifier(candidate.instagram) : ""].filter(Boolean).map(normalize);
-
-          if (identifiers.some((id) => existing.contactIdentifiers.has(id) || existing.socialIdentifiers.has(id) || seenContactIdentifiers.has(id))) {
-            duplicate++;
-            rejectionReasons.duplicateIdentity++;
-            recordReview(candidate, "DUPLICATE", "Confirmed duplicate: exact normalized phone, email, website, or Instagram identity already exists");
-            continue;
-          }
           seenCompanyNames.add(companyKey);
           identifiers.forEach((id) => seenContactIdentifiers.add(id));
 
