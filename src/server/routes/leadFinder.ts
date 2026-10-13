@@ -10,6 +10,7 @@ router.get("/summary", asyncHandler(LeadFinderController.summary));
 router.get("/settings", asyncHandler(LeadFinderController.settings));
 router.get("/history", asyncHandler(LeadFinderController.history));
 router.post("/run", asyncHandler(LeadFinderController.run));
+router.post("/candidates/:runId/:candidateIndex/approve", requireRole("FOUNDER"), asyncHandler(LeadFinderController.approveCandidate));
 router.post("/cancel", requireRole("FOUNDER"), asyncHandler(LeadFinderController.cancel));
 router.post("/reset", requireRole("FOUNDER"), asyncHandler(LeadFinderController.reset));
 router.put("/settings", requireRole("FOUNDER"), asyncHandler(LeadFinderController.saveSettings));
