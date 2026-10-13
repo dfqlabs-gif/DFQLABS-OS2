@@ -50,13 +50,17 @@ export class DirectoryDiscoverySource implements DiscoverySource {
     const startTime = Date.now();
     const candidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
+    const industryTerms = [...new Set(industry.split(";").map((term) => term.trim()).filter(Boolean))];
+    const industryQuery = industryTerms.length
+      ? "(" + industryTerms.map((term) => "\"" + term.replace(/\"/g, "") + "\"").join(" OR ") + ")"
+      : '("real estate" OR realtor OR property OR developer)';
     const queryTemplates = [
-      `"${location}" Nigeria "${industry}" company official website contact phone WhatsApp`,
+      `"${location}" Nigeria ${industryQuery} company official website contact phone WhatsApp`,
       `"${location}" Nigeria property developer real estate agency company phone contact details`,
-      `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR homes) contact phone`,
+      `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR homes OR developer) contact phone`,
       `site:facebook.com "${location}" Nigeria real estate property developer agency contact`,
       `site:finelib.com OR site:businesslist.com.ng OR site:vconnect.com "${location}" real estate property company phone`,
-      `"${location}" Nigeria "real estate" ("Ltd" OR "Limited" OR "Homes" OR "Properties") phone`
+      `"${location}" Nigeria "real estate" ("Ltd" OR "Limited" OR "Homes" OR "Properties" OR "Holdings" OR "Investment") phone`
     ];
     const errors: string[] = [];
     let successfulQueries = 0;
