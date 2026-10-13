@@ -225,6 +225,7 @@ export class ApiClient {
     });
   }  public static getLeadFinderSummary(): Promise<any> { return this.request("/api/v1/lead-finder/summary"); }
   public static getLeadFinderHistory(): Promise<{ runs: any[] }> { return this.request("/api/v1/lead-finder/history"); }
+  public static approveRejectedLeadFinderCandidate(runId: string, candidateIndex: number, companyName?: string): Promise<{ success: boolean; leadId: string; companyName: string; contactSaved: boolean; phoneRejected: boolean }> { return this.request(`/api/v1/lead-finder/candidates/${encodeURIComponent(runId)}/${candidateIndex}/approve`, { method: "POST", body: JSON.stringify({ companyName }) }); }
   public static runLeadFinder(target?: number): Promise<any> { return this.request("/api/v1/lead-finder/run", { method: "POST", body: JSON.stringify({ target }) }); }
   public static cancelLeadFinder(): Promise<any> { return this.request("/api/v1/lead-finder/cancel", { method: "POST" }); }
   public static resetLeadFinderToday(): Promise<any> { return this.request("/api/v1/lead-finder/reset", { method: "POST" }); }
