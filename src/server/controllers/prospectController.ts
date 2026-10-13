@@ -104,6 +104,51 @@ export class ProspectController {
     res.status(204).send();
   }
 
+  public static async exportAll(req: Request, res: Response): Promise<void> {
+    if (!req.user || req.user.role !== "FOUNDER") { res.status(403).json({ title: "Founder access required", status: 403 }); return; }
+    if (!PersistentProspectService.available()) { res.status(503).json({ title: "Persistent database unavailable", status: 503 }); return; }
+    const first = await PersistentProspectService.list(req.user, { page: 1, limit: 100 });
+    if (!first) { res.status(503).json({ title: "Unable to export leads", status: 503 }); return; }
+    const leads = [...first.leads];
+    for (let page = 2; page <= first.totalPages; page++) { const next = await PersistentProspectService.list(req.user, { page, limit: 100 }); if (next) leads.push(...next.leads); }
+    res.setHeader("Content-Disposition", `attachment; filename="dfqlabs-leads-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.status(200).json({ format: "DFQLABS-OS2-LEADS", version: 1, exportedAt: new Date().toISOString(), total: leads.length, leads });
+  }
+
+  public static async importAll(req: Request, res: Response): Promise<void> {
+    if (!req.user || req.user.role !== "FOUNDER") { res.status(403).json({ title: "Founder access required", status: 403 }); return; }
+    if (!PersistentProspectService.available()) { res.status(503).json({ title: "Persistent database unavailable", status: 503 }); return; }
+    const body = req.body as { leads?: unknown; format?: unknown } | unknown[];
+    const rows = Array.isArray(body) ? body : body && typeof body === "object" && Array.isArray((body as { leads?: unknown }).leads) ? (body as { leads: unknown[] }).leads : null;
+    if (!rows) { res.status(400).json({ title: "Invalid JSON lead file", detail: "Upload an array of leads or a DFQLABS export containing a leads array.", status: 400 }); return; }
+    if (rows.length > 2000) { res.status(413).json({ title: "Import too large", detail: "Import up to 2,000 leads per file.", status: 413 }); return; }
+    let imported = 0, skipped = 0, failed = 0;
+    const errors: string[] = [];
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      if (!row || typeof row !== "object" || Array.isArray(row)) { failed++; if (errors.length < 50) errors.push(`Row ${index + 1}: expected a lead object.`); continue; }
+      const lead = row as Record<string, unknown>;
+      const companyName = typeof lead.companyName === "string" ? lead.companyName.trim() : typeof lead.company_name === "string" ? lead.company_name.trim() : "";
+      if (!companyName) { failed++; if (errors.length < 50) errors.push(`Row ${index + 1}: companyName is required.`); continue; }
+      const contacts = Array.isArray(lead.contacts) ? lead.contacts as Array<Record<string, unknown>> : [];
+      const socials = Array.isArray(lead.socialProfiles) ? lead.socialProfiles as Array<Record<string, unknown>> : [];
+      const value = (input: unknown): string | undefined => typeof input === "string" && input.trim() ? input.trim() : undefined;
+      const contact = (type: string): string | undefined => { const item = contacts.find((entry) => String(entry.contactType || entry.contact_type || "").toUpperCase() === type); return value(item?.normalizedValue) || value(item?.normalized_value) || value(item?.rawValue) || value(item?.raw_value); };
+      const social = (platform: string): string | undefined => { const item = socials.find((entry) => String(entry.platform || "").toUpperCase() === platform); return value(item?.handleOrUrl) || value(item?.handle_or_url); };
+      const phone = value(lead.phone) || contact("PHONE");
+      const whatsapp = value(lead.whatsapp) || contact("WHATSAPP");
+      const email = value(lead.email) || contact("EMAIL");
+      const instagram = value(lead.instagram) || social("INSTAGRAM");
+      const website = value(lead.website) || social("WEBSITE");
+      try {
+        const match = await PersistentProspectService.duplicateCheck({ company: companyName, phone, whatsapp, email, social: instagram, website }, req.user);
+        if (match && match.matchType !== "NO_MATCH") { skipped++; continue; }
+        await PersistentProspectService.create({ companyName, contactName: value(lead.contactName) || value(lead.contact_name), titleRole: value(lead.titleRole) || value(lead.title_role), businessType: value(lead.businessType) || value(lead.business_type), location: value(lead.location), description: value(lead.description), phone, whatsapp, email, instagram, website, clientType: value(lead.clientType) || value(lead.client_type), source: value(lead.source), serviceTier: value(lead.serviceTier) || value(lead.service_tier) }, req.user);
+        imported++;
+      } catch (error) { failed++; if (errors.length < 50) errors.push(`Row ${index + 1} (${companyName}): ${error instanceof Error ? error.message : String(error)}`); }
+    }
+    res.status(200).json({ imported, skipped, failed, errors });
+  }
   public static async generateBriefing(req: Request, res: Response): Promise<void> {
     const lead = LeadService.getLeadById(req.params.id, req.user);
     if (!lead) {
