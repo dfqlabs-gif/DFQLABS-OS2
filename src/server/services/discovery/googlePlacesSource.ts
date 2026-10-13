@@ -22,14 +22,15 @@ interface PlacesResponse { places?: GooglePlace[]; nextPageToken?: string }
  */
 export class GooglePlacesDiscoverySource implements DiscoverySource {
   public readonly name = "GOOGLE_PLACES";
-  public isConfigured(): boolean { return Boolean(env.GOOGLE_MAPS_API_KEY?.trim()); }
+  private getApiKey(): string | undefined { return (env.GOOGLE_MAPS_API_KEY || env.GOOGLE_PLACES_API_KEY || env.GOOGLE_API_KEY || process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY)?.trim(); }
+  public isConfigured(): boolean { return Boolean(this.getApiKey()); }
 
   public async discoverCandidates(location: string, industry: string, maxResults = 20): Promise<SourceQueryResult> {
     const started = Date.now();
-    const key = env.GOOGLE_MAPS_API_KEY?.trim();
+    const key = this.getApiKey();
     if (!key) return {
       sourceName: this.name, attempted: false, succeeded: false, queriesCount: 0, candidates: [],
-      errorCode: "NOT_CONFIGURED", errorMessage: "GOOGLE_MAPS_API_KEY is not configured.",
+      errorCode: "NOT_CONFIGURED", errorMessage: "Google Places is not configured. Set GOOGLE_MAPS_API_KEY, GOOGLE_PLACES_API_KEY, or GOOGLE_API_KEY in the Render web service environment, then redeploy. Places API and billing must also be enabled.",
       executionDurationMs: Date.now() - started
     };
 

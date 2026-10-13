@@ -10,6 +10,7 @@ export const LeadFinderPage: React.FC = () => {
   const [error, setError] = React.useState("");
   const [history, setHistory] = React.useState<any[]>([]);
   const [reviewFilter, setReviewFilter] = React.useState<string | null>(null);
+  const [approvingCandidate, setApprovingCandidate] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<any>(null);
   const [scanAcceptedAt, setScanAcceptedAt] = React.useState<number | null>(null);
   const [trackedRunId, setTrackedRunId] = React.useState<string | null>(null);
@@ -451,15 +452,37 @@ export const LeadFinderPage: React.FC = () => {
             <p className="review-modal-summary">{hasReviewTrail ? `Showing ${visibleReviewedCandidates.length} retained candidate records with qualification outcomes.` : reviewFilter === "ALL" ? `Showing ${visibleReviewedCandidates.length} raw candidates retained by source diagnostics. This historical run did not store all candidate-level decisions.` : "This historical run did not store per-candidate rejection reasons, so the aggregate rejection count cannot be mapped back to individual candidates. New scans retain these details."}</p>
             <div className="review-table-wrap"><table className="review-table">
               <thead><tr><th>Company / candidate</th><th>Outcome / reason</th><th>Phone</th><th>Location / source</th><th>Evidence</th></tr></thead>
-              <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => (
-                <tr key={String(candidate.companyName || "candidate") + "-" + index}>
-                  <td><strong>{String(candidate.companyName || "Unnamed candidate")}</strong><small>{String(candidate.description || "").slice(0, 180)}</small></td>
-                  <td><span className="review-outcome">{String(candidate.outcome || "DISCOVERED")}</span><small>{String(candidate.reason || "No decision detail was stored for this legacy record.")}</small></td>
-                  <td>{String(candidate.contactPhone || "—")}{candidate.normalizedPhone ? <small>Normalized: {String(candidate.normalizedPhone)}</small> : null}</td>
+              <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => {
+                const sourceIndex = hasReviewTrail ? reviewedCandidates.findIndex((item) => item === candidate || Boolean(item.reviewId && item.reviewId === candidate.reviewId)) : -1;
+                const approvalKey = String(candidate.reviewId || sourceIndex);
+                const canApprove = activeRole === "FOUNDER" && hasReviewTrail && sourceIndex >= 0 && candidate.outcome === "REJECTED";
+                return (
+                <tr key={String(candidate.reviewId || candidate.companyName || "candidate") + "-" + index}>
+                  <td><strong>{String(candidate.approvedCompanyName || candidate.companyName || "Unnamed candidate")}</strong><small>{String(candidate.description || "").slice(0, 180)}</small></td>
+                  <td><span className="review-outcome">{String(candidate.outcome || "DISCOVERED")}</span><small>{String(candidate.reason || "No decision detail was stored for this legacy record.")}</small>{candidate.approvedLeadId ? <small>Lead ID: {String(candidate.approvedLeadId)}</small> : null}</td>
+                  <td>{String(candidate.contactPhone || "—")}{candidate.normalizedPhone ? <small>Normalized: {String(candidate.normalizedPhone)}</small> : null}{candidate.contactSaved === false ? <small>No contact saved; add contact details before outreach.</small> : null}</td>
                   <td>{String(candidate.location || "—")}<small>{String(candidate.source || "Unknown source")}</small></td>
-                  <td>{candidate.sourceUrl ? <a href={String(candidate.sourceUrl)} target="_blank" rel="noreferrer">Open source ↗</a> : "—"}</td>
+                  <td>{candidate.sourceUrl ? <a href={String(candidate.sourceUrl)} target="_blank" rel="noreferrer">Open source ↗</a> : "—"}
+                    {canApprove && <button type="button" className="btn-primary candidate-approve-button" disabled={approvingCandidate !== null} onClick={async () => {
+                      const companyName = window.prompt("Confirm or correct the company name before adding it to Lead Directory:", String(candidate.companyName || ""));
+                      if (companyName === null) return;
+                      const cleanName = companyName.trim();
+                      if (cleanName.length < 3) { setError("Enter a valid company name before approval."); return; }
+                      const warning = !String(candidate.contactPhone || "").trim() || /invalid Nigerian mobile/i.test(String(candidate.reason || ""));
+                      const approved = window.confirm(`Add "${cleanName}" to Lead Directory?${warning ? "\n\nNo validated phone number is available, so this lead may need contact details added manually before outreach." : ""}\n\nDuplicate checks will still apply.`);
+                      if (!approved) return;
+                      setApprovingCandidate(approvalKey); setError("");
+                      try {
+                        const result = await ApiClient.approveRejectedLeadFinderCandidate(String(latestRun.id), sourceIndex, cleanName);
+                        setError(""); await refresh(); setReviewFilter("ALL");
+                        window.alert(`${result.companyName} was added to Lead Directory.${result.contactSaved ? "" : "\n\nNo phone or email was saved. Add contact details before outreach."}${result.phoneRejected ? "\n\nThe original phone failed validation and was kept only in the review note." : ""}`);
+                      } catch (e) { setError(e instanceof Error ? e.message : "Could not approve this candidate."); }
+                      finally { setApprovingCandidate(null); }
+                    }}>{approvingCandidate === approvalKey ? "Approving…" : "Approve to Directory"}</button>}
+                  </td>
                 </tr>
-              )) : <tr><td colSpan={5} className="empty-state">{!hasReviewTrail && reviewFilter !== "ALL" ? "Exact rejected candidates were not retained for this historical run. New scans will record each candidate outcome." : "No candidate records are available for this view."}</td></tr>}</tbody>
+                );
+              }) : <tr><td colSpan={5} className="empty-state">{!hasReviewTrail && reviewFilter !== "ALL" ? "Exact rejected candidates were not retained for this historical run. New scans will record each candidate outcome." : "No candidate records are available for this view."}</td></tr>}</tbody>
             </table></div>
           </section>
         </div>

@@ -1,4 +1,5 @@
 import { DiscoverySource, RawCandidate, SourceQueryResult } from "./types.js";
+import { env } from "../../config/env.js";
 
 type ApifyListing = {
   title?: string; location?: string; url?: string; description?: string;
@@ -15,15 +16,15 @@ export class ApifyNpcDiscoverySource implements DiscoverySource {
   public readonly name = "APIFY_NPC";
 
   public isConfigured(): boolean {
-    return Boolean(process.env.APIFY_API_TOKEN?.trim());
+    return Boolean((env.APIFY_API_TOKEN || env.APIFY_API_KEY || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY)?.trim());
   }
 
   public async discoverCandidates(location: string, industry: string, maxResults = 20): Promise<SourceQueryResult> {
     const started = Date.now();
-    const token = process.env.APIFY_API_TOKEN?.trim();
+    const token = (env.APIFY_API_TOKEN || env.APIFY_API_KEY || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY)?.trim();
     if (!token) return {
       sourceName: this.name, attempted: false, succeeded: false, queriesCount: 0, candidates: [],
-      errorCode: "NOT_CONFIGURED", errorMessage: "APIFY_API_TOKEN is not configured.",
+      errorCode: "NOT_CONFIGURED", errorMessage: "Apify is not configured. Set APIFY_API_TOKEN or APIFY_API_KEY in the Render web service environment, then redeploy.",
       executionDurationMs: Date.now() - started
     };
 
