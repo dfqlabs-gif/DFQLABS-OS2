@@ -453,7 +453,7 @@ export const LeadFinderPage: React.FC = () => {
             <div className="review-table-wrap"><table className="review-table">
               <thead><tr><th>Company / candidate</th><th>Outcome / reason</th><th>Phone</th><th>Location / source</th><th>Evidence</th></tr></thead>
               <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => {
-                const sourceIndex = hasReviewTrail ? reviewedCandidates.findIndex((item) => item.reviewId && item.reviewId === candidate.reviewId) : -1;
+                const sourceIndex = hasReviewTrail ? reviewedCandidates.findIndex((item) => item === candidate || Boolean(item.reviewId && item.reviewId === candidate.reviewId)) : -1;
                 const approvalKey = String(candidate.reviewId || sourceIndex);
                 const canApprove = activeRole === "FOUNDER" && hasReviewTrail && sourceIndex >= 0 && candidate.outcome === "REJECTED";
                 return (
@@ -468,7 +468,7 @@ export const LeadFinderPage: React.FC = () => {
                       if (companyName === null) return;
                       const cleanName = companyName.trim();
                       if (cleanName.length < 3) { setError("Enter a valid company name before approval."); return; }
-                      const warning = !String(candidate.contactPhone || "").trim() || (String(candidate.contactPhone || "").trim() && !candidate.normalizedPhone);
+                      const warning = !String(candidate.contactPhone || "").trim() || /invalid Nigerian mobile/i.test(String(candidate.reason || ""));
                       const approved = window.confirm(`Add "${cleanName}" to Lead Directory?${warning ? "\n\nNo validated phone number is available, so this lead may need contact details added manually before outreach." : ""}\n\nDuplicate checks will still apply.`);
                       if (!approved) return;
                       setApprovingCandidate(approvalKey); setError("");
