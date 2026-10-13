@@ -39,6 +39,13 @@ export class LeadFinderController {
 
     return res.status(202).json({ accepted: true, runId: run.id, status: "RUNNING", message: "Lead Finder run started. Durable progress is available in prospecting history." });
   }
+  static async approveCandidate(req: Request, res: Response) {
+    const runId = String(req.params.runId || "");
+    const candidateIndex = Number(req.params.candidateIndex);
+    const companyName = typeof req.body?.companyName === "string" ? req.body.companyName : undefined;
+    const result = await LeadFinderService.approveRejectedCandidate(req.user!, runId, candidateIndex, companyName);
+    return res.status(201).json(result);
+  }
   static async cancel(req: Request, res: Response) { res.json(await LeadFinderService.cancelRun(req.user!)); }
   static async history(req: Request, res: Response) { res.json({ runs: await LeadFinderService.getHistory(Number(req.query.limit || 20)) }); }
   static async reset(req: Request, res: Response) { res.json(await LeadFinderService.resetToday(req.user!)); }
