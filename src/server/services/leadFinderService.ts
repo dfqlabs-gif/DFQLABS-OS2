@@ -169,10 +169,9 @@ export class LeadFinderService {
     const category = String(candidate.category || "").trim();
     if (outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
     if (outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
-    if (outcome === "DUPLICATE" || category === "duplicateIdentity") throw new Error("This candidate was marked as a duplicate. Open the existing prospect in the Lead Directory instead of creating another record.");
-    // The audit trail can contain rejected candidates with different or future outcome labels.
-    // Allow founder review of any unresolved candidate, while retaining hard duplicate protection
-    // and the canonical CRM duplicate check below.
+    // Historical runs may have labelled a candidate DUPLICATE based on company name alone.
+    // Re-check canonical contact/social identifiers below before deciding whether it is truly a duplicate.
+    // Only APPROVED/QUALIFIED records are unconditionally blocked at this stage.
     const companyName = (companyNameOverride || String(candidate.companyName || "")).trim();
     if (companyName.length < 3 || companyName.length > 160) throw new Error("Enter a valid company name between 3 and 160 characters.");
     const rawPhone = String(candidate.contactPhone || candidate.phone || "").trim();
@@ -181,7 +180,7 @@ export class LeadFinderService {
     const email = String(candidate.email || "").trim() || undefined;
     const website = String(candidate.website || "").trim() || undefined;
     const instagram = String(candidate.instagram || "").trim() || undefined;
-    const identity = await PersistentProspectService.duplicateCheck({ company: companyName, phone: validPhone, email, social: instagram, website }, user);
+    const identity = await PersistentProspectService.duplicateCheck({ company: companyName, phone: rawPhone || undefined, email, social: instagram, website }, user);
     if (!identity) throw new Error("Database is not configured.");
     if (identity.matchType === "EXACT_MATCH") throw new Error(`Approval blocked because a confirmed identity already exists: ${identity.reason || identity.matchType}. Open the existing lead instead.`);
     const possibleNameMatchNote = identity.matchType === "POTENTIAL_MATCH"
