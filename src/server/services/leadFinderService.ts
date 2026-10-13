@@ -53,6 +53,30 @@ function domain(value?: string): string {
   } catch { return ""; }
 }
 
+export type LeadFinderDuplicateAssessment = "CONFIRMED_DUPLICATE" | "POTENTIAL_DUPLICATE" | "NO_MATCH";
+
+export function assessLeadFinderDuplicate(input: {
+  companyKey: string;
+  identifiers: string[];
+  existingCompanyNames: Set<string>;
+  existingContactIdentifiers: Set<string>;
+  existingSocialIdentifiers: Set<string>;
+  seenCompanyNames: Set<string>;
+  seenContactIdentifiers: Set<string>;
+}): LeadFinderDuplicateAssessment {
+  const normalizedIdentifiers = input.identifiers.map(normalize).filter(Boolean);
+  // Exact normalized contact/social identity takes precedence over a name-only match.
+  if (normalizedIdentifiers.some((id) =>
+    input.existingContactIdentifiers.has(id) ||
+    input.existingSocialIdentifiers.has(id) ||
+    input.seenContactIdentifiers.has(id)
+  )) return "CONFIRMED_DUPLICATE";
+  if (input.companyKey && (input.existingCompanyNames.has(input.companyKey) || input.seenCompanyNames.has(input.companyKey))) {
+    return "POTENTIAL_DUPLICATE";
+  }
+  return "NO_MATCH";
+}
+
 export function isDirectoryCandidate(candidate: Pick<RawCandidate, "companyName" | "sourceTitle" | "sourceSnippet" | "description" | "sourceUrl" | "website" | "instagram" | "facebook" | "linkedin"> & Partial<Pick<RawCandidate, "sourceFamily">>): boolean {
   const hostOf = (value?: string) => {
     try { return new URL(value || "").hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
@@ -424,9 +448,16 @@ export class LeadFinderService {
           const validPhone = phoneValidation.isValid ? phoneValidation.normalized : undefined;
           const identifiers = [validPhone || "", candidate.email ? String(candidate.email).trim().toLowerCase() : "", candidate.website ? domain(candidate.website) : "", candidate.instagram ? normalizeSocialIdentifier(candidate.instagram) : ""].filter(Boolean).map(normalize);
 
-          // Only an exact contact, email, website, or social identity match is a confirmed duplicate.
-          // Check these first so a shared name never masks stronger identity evidence.
-          if (identifiers.some((id) => existing.contactIdentifiers.has(id) || existing.socialIdentifiers.has(id) || seenContactIdentifiers.has(id))) {
+          const duplicateAssessment = assessLeadFinderDuplicate({
+            companyKey,
+            identifiers,
+            existingCompanyNames: existing.companyNames,
+            existingContactIdentifiers: existing.contactIdentifiers,
+            existingSocialIdentifiers: existing.socialIdentifiers,
+            seenCompanyNames,
+            seenContactIdentifiers
+          });
+          if (duplicateAssessment === "CONFIRMED_DUPLICATE") {
             duplicate++;
             rejectionReasons.duplicateIdentity++;
             recordReview(candidate, "DUPLICATE", "Confirmed duplicate: exact normalized phone, email, website, or Instagram identity already exists", validPhone);
@@ -434,8 +465,9 @@ export class LeadFinderService {
           }
 
           // A company-name match alone is not proof of identity. Keep it visible for Founder review.
-          if (existing.companyNames.has(companyKey) || seenCompanyNames.has(companyKey)) {
+          if (duplicateAssessment === "POTENTIAL_DUPLICATE") {
             rejected++;
+            rejectionReasons.potentialDuplicate = (rejectionReasons.potentialDuplicate || 0) + 1;
             recordReview(candidate, "POTENTIAL_DUPLICATE", "Company name matches an existing lead or another candidate, but no exact contact, email, website, or Instagram identity confirms a duplicate. Review the existing record before approval.", validPhone);
             continue;
           }
