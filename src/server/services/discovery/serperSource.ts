@@ -86,9 +86,14 @@ export class SerperDiscoverySource implements DiscoverySource {
       };
     }
 
+    // Search every configured industry instead of silently using only the first one.
+    const industryTerms = [...new Set(industry.split(";").map((term) => term.trim()).filter(Boolean))];
+    const industryQuery = industryTerms.length
+      ? "(" + industryTerms.map((term) => "\"" + term.replace(/\"/g, "") + "\"").join(" OR ") + ")"
+      : '("real estate" OR realtor OR property OR developer)';
     const queryTemplates = [
-      `"${location}" Nigeria "${industry}" company official website contact phone`,
-      `site:instagram.com "${location}" Nigeria ("${industry}" OR property OR developer)`
+      `"${location}" Nigeria ${industryQuery} company official website contact phone WhatsApp`,
+      `site:instagram.com "${location}" Nigeria ("real estate" OR realtor OR property OR homes OR developer)`
     ];
 
     const candidates: RawCandidate[] = [];
