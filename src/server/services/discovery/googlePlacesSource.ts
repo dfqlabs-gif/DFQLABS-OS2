@@ -33,10 +33,13 @@ export class GooglePlacesDiscoverySource implements DiscoverySource {
       executionDurationMs: Date.now() - started
     };
 
+    // The settings field may contain several industries; use them as a broad OR query.
+    const industryTerms = [...new Set(industry.split(";").map((term) => term.trim()).filter(Boolean))];
+    const industryQuery = industryTerms.length ? industryTerms.join(" OR ") : "real estate developers, realtors, property agencies";
     const queries = [
-      `${industry} in ${location}, Nigeria`,
-      `real estate developers and property companies in ${location}, Nigeria`,
-      `real estate agents and estate surveyors in ${location}, Nigeria`
+      `${industryQuery} in ${location}, Nigeria`,
+      `real estate developers, property investment companies and property companies in ${location}, Nigeria`,
+      `real estate agents, luxury realtors, estate surveyors and property management companies in ${location}, Nigeria`
     ];
     const candidates: RawCandidate[] = [];
     const seen = new Set<string>();
