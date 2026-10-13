@@ -15,6 +15,7 @@ const envSchema = z.object({
   SERPER_API_KEY: z.string().optional(),
   APIFY_API_TOKEN: z.string().optional(),
   APIFY_API_KEY: z.string().optional(),
+  APIFY_TOKEN: z.string().optional(),
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   GOOGLE_PLACES_API_KEY: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),

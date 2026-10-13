@@ -30,7 +30,7 @@ export class GooglePlacesDiscoverySource implements DiscoverySource {
     const key = this.getApiKey();
     if (!key) return {
       sourceName: this.name, attempted: false, succeeded: false, queriesCount: 0, candidates: [],
-      errorCode: "NOT_CONFIGURED", errorMessage: "Google Places is not configured. Set GOOGLE_MAPS_API_KEY, GOOGLE_PLACES_API_KEY, or GOOGLE_API_KEY in the Render web service environment, then redeploy. Places API and billing must also be enabled.",
+      errorCode: "NOT_CONFIGURED", errorMessage: "Google Places is not configured. Accepted variable names: GOOGLE_MAPS_API_KEY, GOOGLE_PLACES_API_KEY, or GOOGLE_API_KEY. Set one on the Render web service that runs this application, then redeploy. Places API and billing must also be enabled.",
       executionDurationMs: Date.now() - started
     };
 
