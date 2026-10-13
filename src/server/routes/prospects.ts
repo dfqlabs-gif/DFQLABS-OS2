@@ -12,6 +12,8 @@ router.use(authenticateUser);
 router.post("/duplicate-check", validateRequest(DuplicateCheckSchema), asyncHandler(ProspectController.duplicateCheck));
 router.post("/", validateRequest(CreateProspectSchema), asyncHandler(ProspectController.create));
 router.get("/", asyncHandler(ProspectController.list));
+router.get("/export", requireRole("FOUNDER"), asyncHandler(ProspectController.exportAll));
+router.post("/import", requireRole("FOUNDER"), asyncHandler(ProspectController.importAll));
 router.get("/:id", asyncHandler(ProspectController.getById));
 router.patch("/:id", validateRequest(UpdateProspectSchema), asyncHandler(ProspectController.update));
 router.delete("/:id", asyncHandler(ProspectController.remove));
