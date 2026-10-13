@@ -159,9 +159,12 @@ export class LeadFinderService {
     const instagram = String(candidate.instagram || "").trim() || undefined;
     const identity = await PersistentProspectService.duplicateCheck({ company: companyName, phone: validPhone, email, social: instagram, website }, user);
     if (!identity) throw new Error("Database is not configured.");
-    if (identity.matchType !== "NO_MATCH") throw new Error(`Approval blocked to protect against duplicates: ${identity.reason || identity.matchType}. Check the existing lead first.`);
+    if (identity.matchType === "EXACT_MATCH") throw new Error(`Approval blocked because a confirmed identity already exists: ${identity.reason || identity.matchType}. Open the existing lead instead.`);
+    const possibleNameMatchNote = identity.matchType === "POTENTIAL_MATCH"
+      ? `Potential duplicate warning: a lead named "${companyName}" already exists, but no exact phone, email, website, or Instagram identity matched. Founder approved after reviewing the source.`
+      : "";
     const originalDescription = String(candidate.description || "").trim();
-    const notes = [originalDescription, "Manually approved from Lead Finder after founder review.", rawPhone && !validPhone ? `Original phone not saved as a contact because it failed Nigerian mobile validation: ${rawPhone}` : ""].filter(Boolean).join("\n\n");
+    const notes = [originalDescription, "Manually approved from Lead Finder after founder review.", possibleNameMatchNote, rawPhone && !validPhone ? `Original phone not saved as a contact because it failed Nigerian mobile validation: ${rawPhone}` : ""].filter(Boolean).join("\n\n");
     const lead = await PersistentProspectService.create({
       companyName, businessType: String(candidate.businessType || "REAL ESTATE"), location: String(candidate.location || ""),
       description: notes || `Manually approved from Lead Finder source ${String(candidate.source || "Unknown source")}.`,
@@ -310,6 +313,8 @@ export class LeadFinderService {
 
     const existing = await this.existingIdentifiers();
     const seen = new Set<string>();
+    const seenCompanyNames = new Set<string>();
+    const seenContactIdentifiers = new Set<string>();
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0;
     const rejectionReasons: Record<string, number> = {
@@ -409,10 +414,17 @@ export class LeadFinderService {
             continue;
           }
 
-          if (!companyKey || existing.has(companyKey) || seen.has(companyKey)) {
-            duplicate++;
-            rejectionReasons.duplicateIdentity++;
-            recordReview(candidate, "DUPLICATE", "Company identity already exists in the CRM or this scan");
+          if (!companyKey) {
+            rejected++;
+            rejectionReasons.genericCompanyName++;
+            recordReview(candidate, "REJECTED", "Company name is empty or could not be normalized");
+            continue;
+          }
+          // A name-only match is not proof of identity: similarly named companies can be distinct.
+          // Mark it as a potential duplicate for human review, but do not silently discard it.
+          if (existing.companyNames.has(companyKey) || seenCompanyNames.has(companyKey)) {
+            rejected++;
+            recordReview(candidate, "POTENTIAL_DUPLICATE", "Company name matches an existing lead or another candidate, but no exact contact/website/social identity has confirmed a duplicate. Review before approval.");
             continue;
           }
 
@@ -426,16 +438,16 @@ export class LeadFinderService {
             continue;
           }
 
-          seen.add(companyKey);
-          const identifiers = [validPhone, candidate.website ? domain(candidate.website) : "", candidate.instagram ? normalizeSocialIdentifier(candidate.instagram) : ""].filter(Boolean);
+          const identifiers = [validPhone, candidate.email ? String(candidate.email).trim().toLowerCase() : "", candidate.website ? domain(candidate.website) : "", candidate.instagram ? normalizeSocialIdentifier(candidate.instagram) : ""].filter(Boolean).map(normalize);
 
-          if (identifiers.some((id) => existing.has(normalize(id)) || seen.has(normalize(id)))) {
+          if (identifiers.some((id) => existing.contactIdentifiers.has(id) || existing.socialIdentifiers.has(id) || seenContactIdentifiers.has(id))) {
             duplicate++;
             rejectionReasons.duplicateIdentity++;
-            recordReview(candidate, "DUPLICATE", "Phone, website, or Instagram identity already exists");
+            recordReview(candidate, "DUPLICATE", "Confirmed duplicate: exact normalized phone, email, website, or Instagram identity already exists");
             continue;
           }
-          identifiers.forEach((id) => seen.add(normalize(id)));
+          seenCompanyNames.add(companyKey);
+          identifiers.forEach((id) => seenContactIdentifiers.add(id));
 
           const scoreData = scoreCandidate({
             companyName,
@@ -582,19 +594,21 @@ export class LeadFinderService {
     };
   }
 
-  private static async existingIdentifiers(): Promise<Set<string>> {
+  private static async existingIdentifiers(): Promise<{ companyNames: Set<string>; contactIdentifiers: Set<string>; socialIdentifiers: Set<string> }> {
     const db = getSupabaseClient();
-    const identifiers = new Set<string>();
-    if (!db) return identifiers;
+    const companyNames = new Set<string>();
+    const contactIdentifiers = new Set<string>();
+    const socialIdentifiers = new Set<string>();
+    if (!db) return { companyNames, contactIdentifiers, socialIdentifiers };
     const [{ data: leads }, { data: contacts }, { data: socials }] = await Promise.all([
       db.from("leads").select("company_name"),
       db.from("lead_contacts").select("normalized_value"),
       db.from("lead_social_profiles").select("normalized_identifier")
     ]);
-    for (const row of leads || []) if (row.company_name) identifiers.add(normalize(row.company_name));
-    for (const row of contacts || []) if (row.normalized_value) identifiers.add(normalize(row.normalized_value));
-    for (const row of socials || []) if (row.normalized_identifier) identifiers.add(normalize(row.normalized_identifier));
-    return identifiers;
+    for (const row of leads || []) if (row.company_name) companyNames.add(normalize(row.company_name));
+    for (const row of contacts || []) if (row.normalized_value) contactIdentifiers.add(normalize(row.normalized_value));
+    for (const row of socials || []) if (row.normalized_identifier) socialIdentifiers.add(normalize(row.normalized_identifier));
+    return { companyNames, contactIdentifiers, socialIdentifiers };
   }
 
   static async cancelRun(user: User) {
