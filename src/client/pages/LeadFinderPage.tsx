@@ -201,7 +201,10 @@ export const LeadFinderPage: React.FC = () => {
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
   const sourceStats = latestRun?.stats?.sourceStats || {};
   const reviewedCandidates: Array<Record<string, unknown>> = Array.isArray(latestRun?.stats?.reviewedCandidates) ? latestRun.stats.reviewedCandidates : [];
-  const visibleReviewedCandidates = reviewedCandidates.filter((candidate) => !reviewFilter || reviewFilter === "ALL" || candidate.category === reviewFilter);
+  const hasReviewTrail = reviewedCandidates.length > 0;
+  const historicalSourceCandidates: Array<Record<string, unknown>> = Object.entries(sourceStats).flatMap(([provider, result]: [string, any]) => Array.isArray(result?.candidates) ? result.candidates.map((candidate: Record<string, unknown>) => ({ ...candidate, source: provider, outcome: "DISCOVERED", reason: "This historical run did not store the individual qualification decision." })) : []);
+  const candidateRows = hasReviewTrail ? reviewedCandidates : historicalSourceCandidates;
+  const visibleReviewedCandidates = candidateRows.filter((candidate) => !reviewFilter || reviewFilter === "ALL" || (hasReviewTrail && candidate.category === reviewFilter));
 
   const serperExhausted = Object.values(sourceStats).some((s: any) => s.errorCode === "SERPER_CREDITS_EXHAUSTED");
 
@@ -445,7 +448,7 @@ export const LeadFinderPage: React.FC = () => {
               <div><div className="eyebrow">RUN AUDIT TRAIL</div><h2 id="review-modal-title">{reviewFilter === "ALL" ? "Candidates reviewed" : reviewFilter === "genericCompanyName" ? "Generic names rejected" : reviewFilter === "invalidNigeriaPhone" ? "Invalid Nigerian phone numbers" : reviewFilter === "duplicateIdentity" ? "Duplicate identities" : "Below qualification threshold"}</h2></div>
               <button className="btn-secondary" onClick={() => setReviewFilter(null)}>Close</button>
             </div>
-            <p className="review-modal-summary">Showing {visibleReviewedCandidates.length} retained candidate records. Older scans may only contain aggregate counts.</p>
+            <p className="review-modal-summary">{hasReviewTrail ? `Showing ${visibleReviewedCandidates.length} retained candidate records with qualification outcomes.` : reviewFilter === "ALL" ? `Showing ${visibleReviewedCandidates.length} raw candidates retained by source diagnostics. This historical run did not store all candidate-level decisions.` : "This historical run did not store per-candidate rejection reasons, so the aggregate rejection count cannot be mapped back to individual candidates. New scans retain these details."}</p>
             <div className="review-table-wrap"><table className="review-table">
               <thead><tr><th>Company / candidate</th><th>Outcome / reason</th><th>Phone</th><th>Location / source</th><th>Evidence</th></tr></thead>
               <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => (
@@ -456,7 +459,7 @@ export const LeadFinderPage: React.FC = () => {
                   <td>{String(candidate.location || "—")}<small>{String(candidate.source || "Unknown source")}</small></td>
                   <td>{candidate.sourceUrl ? <a href={String(candidate.sourceUrl)} target="_blank" rel="noreferrer">Open source ↗</a> : "—"}</td>
                 </tr>
-              )) : <tr><td colSpan={5} className="empty-state">No individual records retained for this category in this run. New scans will retain candidate details.</td></tr>}</tbody>
+              )) : <tr><td colSpan={5} className="empty-state">{!hasReviewTrail && reviewFilter !== "ALL" ? "Exact rejected candidates were not retained for this historical run. New scans will record each candidate outcome." : "No candidate records are available for this view."}</td></tr>}</tbody>
             </table></div>
           </section>
         </div>
