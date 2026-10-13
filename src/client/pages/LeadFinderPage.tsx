@@ -9,6 +9,7 @@ export const LeadFinderPage: React.FC = () => {
   const [starting, setStarting] = React.useState(false);
   const [error, setError] = React.useState("");
   const [history, setHistory] = React.useState<any[]>([]);
+  const [reviewFilter, setReviewFilter] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<any>(null);
   const [scanAcceptedAt, setScanAcceptedAt] = React.useState<number | null>(null);
   const [trackedRunId, setTrackedRunId] = React.useState<string | null>(null);
@@ -199,6 +200,8 @@ export const LeadFinderPage: React.FC = () => {
   const displayedCompletion = latestRun && latestRun.status !== "RUNNING" ? latestRun : completionNotice;
   const diagnostics = latestRun?.stats?.rejectionReasons || {};
   const sourceStats = latestRun?.stats?.sourceStats || {};
+  const reviewedCandidates: Array<Record<string, unknown>> = Array.isArray(latestRun?.stats?.reviewedCandidates) ? latestRun.stats.reviewedCandidates : [];
+  const visibleReviewedCandidates = reviewedCandidates.filter((candidate) => !reviewFilter || reviewFilter === "ALL" || candidate.category === reviewFilter);
 
   const serperExhausted = Object.values(sourceStats).some((s: any) => s.errorCode === "SERPER_CREDITS_EXHAUSTED");
 
@@ -413,12 +416,12 @@ export const LeadFinderPage: React.FC = () => {
           <div className="eyebrow">SOURCE & QUALIFICATION DIAGNOSTICS</div>
           <h3>Multi-Source Yield Report</h3>
           <div className="diagnostic-grid">
-            <div><span>Candidates reviewed</span><strong>{latestRun.found_count ?? 0}</strong></div>
+            <button type="button" className="diagnostic-click-card" onClick={() => setReviewFilter("ALL")}><span>Candidates reviewed</span><strong>{latestRun.found_count ?? 0}</strong><small>View candidate details</small></button>
             <div><span>Saved as qualified</span><strong>{latestRun.qualified_count ?? 0}</strong></div>
-            <div><span>Generic names rejected</span><strong>{diagnostics.genericCompanyName ?? 0}</strong></div>
-            <div><span>Invalid Nigerian phone</span><strong>{diagnostics.invalidNigeriaPhone ?? 0}</strong></div>
-            <div><span>Below min score</span><strong>{diagnostics.belowMinimumScore ?? 0}</strong></div>
-            <div><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? 0}</strong></div>
+            <button type="button" className="diagnostic-click-card" onClick={() => setReviewFilter("genericCompanyName")}><span>Generic names rejected</span><strong>{diagnostics.genericCompanyName ?? 0}</strong><small>View details</small></button>
+            <button type="button" className="diagnostic-click-card" onClick={() => setReviewFilter("invalidNigeriaPhone")}><span>Invalid Nigerian phone</span><strong>{diagnostics.invalidNigeriaPhone ?? 0}</strong><small>View numbers</small></button>
+            <button type="button" className="diagnostic-click-card" onClick={() => setReviewFilter("belowMinimumScore")}><span>Below min score</span><strong>{diagnostics.belowMinimumScore ?? 0}</strong><small>View details</small></button>
+            <button type="button" className="diagnostic-click-card" onClick={() => setReviewFilter("duplicateIdentity")}><span>Duplicate identities</span><strong>{diagnostics.duplicateIdentity ?? 0}</strong><small>View details</small></button>
           </div>
           {Object.keys(sourceStats).length > 0 && (
             <div className="finder-history-list source-yield-list" style={{ marginTop: "1rem" }}>
@@ -428,11 +431,35 @@ export const LeadFinderPage: React.FC = () => {
                   <span className="run-date">{src}</span>
                   <span>{res.succeeded ? "✅ Succeeded" : `❌ ${res.errorCode || "Failed"}`}</span>
                   <strong>{res.candidates?.length || 0} candidates</strong>
+                  <small className="provider-diagnostic-detail">{res.errorMessage || (res.succeeded ? "Request completed but returned no matching candidates." : "Check provider credentials, credits, network access and endpoint settings.")}</small>
                 </div>
               ))}
             </div>
           )}
         </section>
+      )}
+      {reviewFilter && (
+        <div className="review-modal-backdrop" role="presentation" onClick={() => setReviewFilter(null)}>
+          <section className="card review-modal" role="dialog" aria-modal="true" aria-labelledby="review-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className="review-modal-head">
+              <div><div className="eyebrow">RUN AUDIT TRAIL</div><h2 id="review-modal-title">{reviewFilter === "ALL" ? "Candidates reviewed" : reviewFilter === "genericCompanyName" ? "Generic names rejected" : reviewFilter === "invalidNigeriaPhone" ? "Invalid Nigerian phone numbers" : reviewFilter === "duplicateIdentity" ? "Duplicate identities" : "Below qualification threshold"}</h2></div>
+              <button className="btn-secondary" onClick={() => setReviewFilter(null)}>Close</button>
+            </div>
+            <p className="review-modal-summary">Showing {visibleReviewedCandidates.length} retained candidate records. Older scans may only contain aggregate counts.</p>
+            <div className="review-table-wrap"><table className="review-table">
+              <thead><tr><th>Company / candidate</th><th>Outcome / reason</th><th>Phone</th><th>Location / source</th><th>Evidence</th></tr></thead>
+              <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => (
+                <tr key={String(candidate.companyName || "candidate") + "-" + index}>
+                  <td><strong>{String(candidate.companyName || "Unnamed candidate")}</strong><small>{String(candidate.description || "").slice(0, 180)}</small></td>
+                  <td><span className="review-outcome">{String(candidate.outcome || "DISCOVERED")}</span><small>{String(candidate.reason || "No decision detail was stored for this legacy record.")}</small></td>
+                  <td>{String(candidate.contactPhone || "—")}{candidate.normalizedPhone ? <small>Normalized: {String(candidate.normalizedPhone)}</small> : null}</td>
+                  <td>{String(candidate.location || "—")}<small>{String(candidate.source || "Unknown source")}</small></td>
+                  <td>{candidate.sourceUrl ? <a href={String(candidate.sourceUrl)} target="_blank" rel="noreferrer">Open source ↗</a> : "—"}</td>
+                </tr>
+              )) : <tr><td colSpan={5} className="empty-state">No individual records retained for this category in this run. New scans will retain candidate details.</td></tr>}</tbody>
+            </table></div>
+          </section>
+        </div>
       )}
     </section>
   );
