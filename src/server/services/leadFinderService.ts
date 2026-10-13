@@ -261,6 +261,21 @@ export class LeadFinderService {
 
     const sourceStats: Record<string, SourceQueryResult> = {};
     const persistenceErrors: string[] = [];
+    // Bounded candidate-level audit trail lets the UI explain qualification counts.
+    const reviewedCandidates: Array<Record<string, unknown>> = [];
+    const recordReview = (candidate: RawCandidate, outcome: string, reason?: string, normalizedPhone?: string) => {
+      if (reviewedCandidates.length >= 500) return;
+      const category = outcome === "DUPLICATE" ? "duplicateIdentity" : /generic|identity could not/i.test(reason || "") ? "genericCompanyName" : /invalid Nigerian mobile|phone number/i.test(reason || "") ? "invalidNigeriaPhone" : /score .* below|insufficient evidence/i.test(reason || "") ? "belowMinimumScore" : /Directory\/search-results/i.test(reason || "") ? "directoryPage" : "other";
+      reviewedCandidates.push({
+        companyName: candidate.companyName || candidate.sourceTitle || "Unnamed candidate",
+        contactPhone: candidate.phone || "", normalizedPhone: normalizedPhone || "",
+        location: candidate.location || "", source: candidate.sourceName || candidate.sourceFamily || "Unknown source",
+        sourceUrl: candidate.sourceUrl || candidate.website || candidate.instagram || "",
+        website: candidate.website || "", instagram: candidate.instagram || "",
+        description: (candidate.description || candidate.sourceSnippet || "").slice(0, 500),
+        outcome, reason: reason || "", category
+      });
+    };
 
     for (const source of sources) {
       if (created.length >= remaining) break;
@@ -270,7 +285,7 @@ export class LeadFinderService {
         if (created.length >= remaining) break;
 
         const { error: progressStartError } = await db.from("lead_finder_runs").update({
-          stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
+          stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, reviewedCandidates, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
         }).eq("id", run.id).eq("status", "RUNNING");
         if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
         const result = await source.discoverCandidates(location, settings.industries.filter((value) => typeof value === "string" && value.trim()).join("; ") || "real estate", source.name === "APIFY_NPC" ? 10 : 40);
@@ -283,6 +298,7 @@ export class LeadFinderService {
           found++;
           rejected++;
           rejectionReasons.directoryPage++;
+          recordReview(candidate, "REJECTED", "Directory/search-results page, not an identifiable real-estate business");
           return false;
         });
         const enrichedCandidates = await PublicContactEnricher.enrich(candidateResults);
@@ -323,6 +339,7 @@ export class LeadFinderService {
           if (identityAssessment?.status === "UNRESOLVED") {
             rejectionReasons.genericCompanyName++;
             rejected++;
+            recordReview(candidate, "REJECTED", "Company identity could not be resolved or the company name is generic");
             continue;
           }
 
@@ -334,6 +351,7 @@ export class LeadFinderService {
 
           if (!companyKey || existing.has(companyKey) || seen.has(companyKey)) {
             duplicate++;
+            recordReview(candidate, "DUPLICATE", "Company identity already exists in the CRM or this scan");
             continue;
           }
 
@@ -343,6 +361,7 @@ export class LeadFinderService {
           if (!validPhone) {
             rejectionReasons.invalidNigeriaPhone++;
             rejected++;
+            recordReview(candidate, "REJECTED", "Missing or invalid Nigerian mobile number");
             continue;
           }
 
@@ -352,6 +371,7 @@ export class LeadFinderService {
           if (identifiers.some((id) => existing.has(normalize(id)) || seen.has(normalize(id)))) {
             duplicate++;
             rejectionReasons.duplicateIdentity++;
+            recordReview(candidate, "DUPLICATE", "Phone, website, or Instagram identity already exists");
             continue;
           }
           identifiers.forEach((id) => seen.add(normalize(id)));
@@ -371,12 +391,14 @@ export class LeadFinderService {
           if (!scoreData.hasRealEstateEvidence) {
             rejectionReasons.belowMinimumScore++;
             rejected++;
+            recordReview(candidate, "REJECTED", "Insufficient evidence that the business is real-estate related", validPhone);
             continue;
           }
 
           if (scoreData.score < settings.minimumScore) {
             rejectionReasons.belowMinimumScore++;
             rejected++;
+            recordReview(candidate, "REJECTED", "Score " + scoreData.score + " is below the minimum " + settings.minimumScore, validPhone);
             continue;
           }
 
@@ -427,6 +449,7 @@ export class LeadFinderService {
             }
 
             qualified++;
+            recordReview(candidate, "QUALIFIED", "Qualified with score " + scoreData.score, validPhone);
             created.push({
               companyName,
               location,
@@ -445,6 +468,7 @@ export class LeadFinderService {
           } catch (error) {
             rejectionReasons.persistenceError++;
             rejected++;
+            recordReview(candidate, "ERROR", "Candidate could not be saved to the CRM", validPhone);
             const message = error instanceof Error ? error.message : String(error);
             persistenceErrors.push(message.slice(0, 500));
             // Never leave a half-created Lead Finder record in the canonical directory when
@@ -475,7 +499,7 @@ export class LeadFinderService {
 
     const { error: finalUpdateError } = await db.from("lead_finder_runs").update({
       status: finalStatus, found_count: found, qualified_count: qualified, duplicate_count: duplicate, rejected_count: rejected,
-      stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, persistenceErrors: persistenceErrors.slice(0, 10), phase: "FINISHED", failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : persistenceErrors.length ? "PERSISTENCE_FAILURE" : undefined, statusMessage: persistenceErrors.length ? `${statusMessage} Persistence errors: ${persistenceErrors.slice(0, 3).join(" | ")}` : statusMessage },
+      stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, reviewedCandidates, persistenceErrors: persistenceErrors.slice(0, 10), phase: "FINISHED", failureCode: !anySourceSucceeded ? "ALL_PROVIDERS_UNAVAILABLE" : persistenceErrors.length ? "PERSISTENCE_FAILURE" : undefined, statusMessage: persistenceErrors.length ? `${statusMessage} Persistence errors: ${persistenceErrors.slice(0, 3).join(" | ")}` : statusMessage },
       completed_at: new Date().toISOString()
     }).eq("id", run.id).eq("status", "RUNNING");
     if (finalUpdateError) throw new Error("Unable to persist final Lead Finder status: " + finalUpdateError.message);
