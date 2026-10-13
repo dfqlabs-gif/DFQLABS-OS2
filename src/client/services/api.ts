@@ -134,6 +134,13 @@ export class ApiClient {
     return this.request(`/api/v1/prospects?${params.toString()}`);
   }
 
+  public static exportProspects(): Promise<{ format: string; version: number; exportedAt: string; leads: Lead[] }> {
+    return this.request("/api/v1/prospects/export");
+  }
+
+  public static importProspects(payload: unknown): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }> {
+    return this.request("/api/v1/prospects/import", { method: "POST", body: JSON.stringify(payload) });
+  }
   public static getProspectDetail(
     id: string
   ): Promise<{ lead: Lead; contacts: LeadContact[]; socialProfiles: LeadSocialProfile[]; messages: Message[]; conversation?: { id: string } }> {
