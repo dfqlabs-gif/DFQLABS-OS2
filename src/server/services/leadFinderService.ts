@@ -140,8 +140,6 @@ export class LeadFinderService {
     // Legacy runs may retain a source candidate without a candidate-level review record.
     // Allow Founder approval of that visible candidate, then append the final decision to the run audit.
     const candidate = isStoredReview ? { ...reviewed[candidateIndex] } : { ...candidateInput! };
-    const originalOutcome = String(candidate.outcome || "").trim().toUpperCase();
-    const originalCategory = String(candidate.category || "").trim();
 
     const outcome = String(candidate.outcome || "").trim().toUpperCase();
     const category = String(candidate.category || "").trim();
