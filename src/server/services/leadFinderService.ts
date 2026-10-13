@@ -126,6 +126,53 @@ export function scoreCandidate(input: { companyName: string; description: string
 export class LeadFinderService {
   private static readonly SETTINGS_ID = "00000000-0000-0000-0000-000000000030";
 
+  static async approveRejectedCandidate(user: User, runId: string, candidateIndex: number, companyNameOverride?: string) {
+    if (user.role !== "FOUNDER") throw new Error("Founder access required to approve rejected candidates.");
+    const db = getSupabaseClient();
+    if (!db) throw new Error("Database is not configured.");
+    const { data: run, error } = await db.from("lead_finder_runs").select("id,stats").eq("id", runId).maybeSingle();
+    if (error || !run) throw new Error(error?.message || "Lead Finder run not found.");
+    const stats = run.stats && typeof run.stats === "object" ? { ...(run.stats as Record<string, unknown>) } : {};
+    const reviewed = Array.isArray(stats.reviewedCandidates) ? [...stats.reviewedCandidates as Array<Record<string, unknown>>] : [];
+    if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= reviewed.length) throw new Error("Candidate review record not found. Refresh the run diagnostics and try again.");
+    const candidate = { ...reviewed[candidateIndex] };
+    if (candidate.outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
+    if (candidate.outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
+    if (candidate.outcome === "DUPLICATE" || candidate.category === "duplicateIdentity") throw new Error("This candidate was marked as a duplicate. Open the existing prospect in the Lead Directory instead of creating another record.");
+    if (candidate.outcome !== "REJECTED") throw new Error("Only rejected candidates can be manually approved.");
+    const companyName = (companyNameOverride || String(candidate.companyName || "")).trim();
+    if (companyName.length < 3 || companyName.length > 160) throw new Error("Enter a valid company name between 3 and 160 characters.");
+    const rawPhone = String(candidate.contactPhone || "").trim();
+    const phoneCheck = validateNigerianMobilePhone(rawPhone);
+    const validPhone = phoneCheck.isValid ? phoneCheck.normalized : undefined;
+    const email = String(candidate.email || "").trim() || undefined;
+    const website = String(candidate.website || "").trim() || undefined;
+    const instagram = String(candidate.instagram || "").trim() || undefined;
+    const identity = await PersistentProspectService.duplicateCheck({ company: companyName, phone: validPhone, email, social: instagram, website }, user);
+    if (!identity) throw new Error("Database is not configured.");
+    if (identity.matchType !== "NO_MATCH") throw new Error(`Approval blocked to protect against duplicates: ${identity.reason || identity.matchType}. Check the existing lead first.`);
+    const originalDescription = String(candidate.description || "").trim();
+    const notes = [originalDescription, "Manually approved from Lead Finder after founder review.", rawPhone && !validPhone ? `Original phone not saved as a contact because it failed Nigerian mobile validation: ${rawPhone}` : ""].filter(Boolean).join("\n\n");
+    const lead = await PersistentProspectService.create({
+      companyName, businessType: String(candidate.businessType || "REAL ESTATE"), location: String(candidate.location || ""),
+      description: notes || `Manually approved from Lead Finder source ${String(candidate.source || "Unknown source")}.`,
+      phone: validPhone, email, instagram, website, source: `LEAD_FINDER_MANUAL_APPROVAL_${String(candidate.source || "UNKNOWN")}`,
+      clientType: "MANUAL_REVIEW_APPROVAL", serviceTier: "PENDING_REVIEW"
+    }, user);
+    candidate.outcome = "APPROVED";
+    candidate.reason = "Manually approved by Founder and added to Lead Directory";
+    candidate.approvedLeadId = lead.id;
+    candidate.approvedAt = new Date().toISOString();
+    candidate.approvedBy = user.id;
+    candidate.approvedCompanyName = companyName;
+    candidate.contactSaved = Boolean(validPhone || email);
+    reviewed[candidateIndex] = candidate;
+    stats.reviewedCandidates = reviewed;
+    stats.manuallyApproved = Number(stats.manuallyApproved || 0) + 1;
+    const { error: updateError } = await db.from("lead_finder_runs").update({ stats }).eq("id", runId);
+    if (updateError) { throw new Error(`Lead ${lead.id} was created, but the run audit could not be updated. Refresh the Lead Directory before retrying. Details: ${updateError.message}`); }
+    return { success: true, leadId: lead.id, companyName, contactSaved: Boolean(validPhone || email), phoneRejected: Boolean(rawPhone && !validPhone) };
+  }
   static async getSettings(): Promise<LeadFinderSettings> {
     const db = getSupabaseClient();
     const fallback: LeadFinderSettings = { dailyTarget: 30, minimumScore: 70, locations: DEFAULT_LOCATIONS, industries: DEFAULT_INDUSTRIES, preferredContact: "WHATSAPP" };
@@ -267,11 +314,13 @@ export class LeadFinderService {
       if (reviewedCandidates.length >= 500) return;
       const category = outcome === "DUPLICATE" ? "duplicateIdentity" : /generic|identity could not/i.test(reason || "") ? "genericCompanyName" : /invalid Nigerian mobile|phone number/i.test(reason || "") ? "invalidNigeriaPhone" : /score .* below|insufficient evidence/i.test(reason || "") ? "belowMinimumScore" : /Directory\/search-results/i.test(reason || "") ? "directoryPage" : "other";
       reviewedCandidates.push({
+        reviewId: crypto.randomUUID(),
         companyName: candidate.companyName || candidate.sourceTitle || "Unnamed candidate",
+        businessType: candidate.businessType || "REAL ESTATE",
         contactPhone: candidate.phone || "", normalizedPhone: normalizedPhone || "",
-        location: candidate.location || "", source: candidate.sourceFamily || "Unknown source",
+        email: candidate.email || "", location: candidate.location || "", source: candidate.sourceFamily || "Unknown source",
         sourceUrl: candidate.sourceUrl || candidate.website || candidate.instagram || "",
-        website: candidate.website || "", instagram: candidate.instagram || "",
+        website: candidate.website || "", instagram: candidate.instagram || "", facebook: candidate.facebook || "", linkedin: candidate.linkedin || "",
         description: (candidate.description || candidate.sourceSnippet || "").slice(0, 500),
         outcome, reason: reason || "", category
       });
