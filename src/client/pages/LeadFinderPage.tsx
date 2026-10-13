@@ -203,7 +203,7 @@ export const LeadFinderPage: React.FC = () => {
   const sourceStats = latestRun?.stats?.sourceStats || {};
   const reviewedCandidates: Array<Record<string, unknown>> = Array.isArray(latestRun?.stats?.reviewedCandidates) ? latestRun.stats.reviewedCandidates : [];
   const hasReviewTrail = reviewedCandidates.length > 0;
-  const historicalSourceCandidates: Array<Record<string, unknown>> = Object.entries(sourceStats).flatMap(([provider, result]: [string, any]) => Array.isArray(result?.candidates) ? result.candidates.map((candidate: Record<string, unknown>) => ({ ...candidate, source: provider, outcome: "DISCOVERED", reason: "This historical run did not store the individual qualification decision." })) : []);
+  const historicalSourceCandidates: Array<Record<string, unknown>> = Object.entries(sourceStats).flatMap(([provider, result]: [string, any]) => Array.isArray(result?.candidates) ? result.candidates.map((candidate: Record<string, unknown>) => ({ ...candidate, companyName: candidate.companyName || candidate.sourceTitle || candidate.name || "Unnamed candidate", contactPhone: candidate.contactPhone || candidate.phone || "", source: candidate.sourceFamily || provider, sourceUrl: candidate.sourceUrl || candidate.website || candidate.instagram || "", outcome: "DISCOVERED", reason: "This historical run did not store the individual qualification decision." })) : []);
   const candidateRows = hasReviewTrail ? reviewedCandidates : historicalSourceCandidates;
   const visibleReviewedCandidates = candidateRows.filter((candidate) => !reviewFilter || reviewFilter === "ALL" || (hasReviewTrail && candidate.category === reviewFilter));
 
@@ -455,7 +455,10 @@ export const LeadFinderPage: React.FC = () => {
               <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => {
                 const sourceIndex = hasReviewTrail ? reviewedCandidates.findIndex((item) => item === candidate || Boolean(item.reviewId && item.reviewId === candidate.reviewId)) : -1;
                 const approvalKey = String(candidate.reviewId || sourceIndex);
-                const canApprove = activeRole === "FOUNDER" && hasReviewTrail && sourceIndex >= 0 && candidate.outcome === "REJECTED";
+                const outcome = String(candidate.outcome || "DISCOVERED").trim().toUpperCase();
+                const isDuplicate = outcome === "DUPLICATE" || candidate.category === "duplicateIdentity";
+                const alreadyInDirectory = outcome === "APPROVED" || outcome === "QUALIFIED";
+                const canApprove = activeRole === "FOUNDER" && (hasReviewTrail ? sourceIndex >= 0 : true) && !isDuplicate && !alreadyInDirectory;
                 return (
                 <tr key={String(candidate.reviewId || candidate.companyName || "candidate") + "-" + index}>
                   <td><strong>{String(candidate.approvedCompanyName || candidate.companyName || "Unnamed candidate")}</strong><small>{String(candidate.description || "").slice(0, 180)}</small></td>
@@ -473,12 +476,13 @@ export const LeadFinderPage: React.FC = () => {
                       if (!approved) return;
                       setApprovingCandidate(approvalKey); setError("");
                       try {
-                        const result = await ApiClient.approveRejectedLeadFinderCandidate(String(latestRun.id), sourceIndex, cleanName);
+                        const result = await ApiClient.approveRejectedLeadFinderCandidate(String(latestRun.id), sourceIndex, cleanName, hasReviewTrail ? undefined : candidate);
                         setError(""); await refresh(); setReviewFilter("ALL");
                         window.alert(`${result.companyName} was added to Lead Directory.${result.contactSaved ? "" : "\n\nNo phone or email was saved. Add contact details before outreach."}${result.phoneRejected ? "\n\nThe original phone failed validation and was kept only in the review note." : ""}`);
                       } catch (e) { setError(e instanceof Error ? e.message : "Could not approve this candidate."); }
                       finally { setApprovingCandidate(null); }
                     }}>{approvingCandidate === approvalKey ? "Approving…" : "Approve to Directory"}</button>}
+                    {!canApprove && activeRole === "FOUNDER" && <small className="approval-unavailable-reason">{isDuplicate ? "Approval unavailable: duplicate identity. Open the existing lead." : alreadyInDirectory ? "Already in the Lead Directory." : "Approval unavailable for this record."}</small>}
                   </td>
                 </tr>
                 );
