@@ -269,7 +269,7 @@ export class LeadFinderService {
       reviewedCandidates.push({
         companyName: candidate.companyName || candidate.sourceTitle || "Unnamed candidate",
         contactPhone: candidate.phone || "", normalizedPhone: normalizedPhone || "",
-        location: candidate.location || "", source: candidate.sourceName || candidate.sourceFamily || "Unknown source",
+        location: candidate.location || "", source: candidate.sourceFamily || "Unknown source",
         sourceUrl: candidate.sourceUrl || candidate.website || candidate.instagram || "",
         website: candidate.website || "", instagram: candidate.instagram || "",
         description: (candidate.description || candidate.sourceSnippet || "").slice(0, 500),
@@ -346,6 +346,7 @@ export class LeadFinderService {
           if (isGenericCompanyName(companyName)) {
             rejectionReasons.genericCompanyName++;
             rejected++;
+            recordReview(candidate, "REJECTED", "Generic or non-identifiable company name");
             continue;
           }
 
