@@ -2,6 +2,7 @@ import { Router } from "express";
 import { CreateProspectSchema, DuplicateCheckSchema, UpdateProspectSchema } from "../../shared/schemas/index.js";
 import { ProspectController } from "../controllers/prospectController.js";
 import { authenticateUser } from "../middleware/auth.js";
+import { requireRole } from "../middleware/rbac.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { validateRequest } from "../middleware/validate.js";
 
