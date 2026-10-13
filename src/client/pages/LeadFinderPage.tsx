@@ -454,7 +454,7 @@ export const LeadFinderPage: React.FC = () => {
               <thead><tr><th>Company / candidate</th><th>Outcome / reason</th><th>Phone</th><th>Location / source</th><th>Evidence</th></tr></thead>
               <tbody>{visibleReviewedCandidates.length ? visibleReviewedCandidates.map((candidate, index) => {
                 const sourceIndex = hasReviewTrail ? reviewedCandidates.findIndex((item) => item === candidate || Boolean(item.reviewId && item.reviewId === candidate.reviewId)) : -1;
-                const approvalKey = String(candidate.reviewId || sourceIndex);
+                const approvalKey = String(candidate.reviewId || (sourceIndex >= 0 ? sourceIndex : `${candidate.companyName || "candidate"}-${candidate.source || "source"}-${index}`));
                 const outcome = String(candidate.outcome || "DISCOVERED").trim().toUpperCase();
                 const isDuplicate = outcome === "DUPLICATE" || candidate.category === "duplicateIdentity";
                 const alreadyInDirectory = outcome === "APPROVED" || outcome === "QUALIFIED";
