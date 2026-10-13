@@ -28,7 +28,7 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void; initi
       .catch((err) => { if (active) addToast(err.message, "error"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [search, stage, page, addToast]);
+  }, [search, stage, page]);
 
   useEffect(() => { setStage(initialStage); setPage(1); }, [initialStage]);
 
