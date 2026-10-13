@@ -21,7 +21,7 @@ export class ApifyNpcDiscoverySource implements DiscoverySource {
 
   public async discoverCandidates(location: string, industry: string, maxResults = 20): Promise<SourceQueryResult> {
     const started = Date.now();
-    const token = (env.APIFY_API_TOKEN || env.APIFY_API_KEY || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY)?.trim();
+    const token = (env.APIFY_API_TOKEN || env.APIFY_API_KEY || env.APIFY_TOKEN || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY || process.env.APIFY_TOKEN)?.trim();
     if (!token) return {
       sourceName: this.name, attempted: false, succeeded: false, queriesCount: 0, candidates: [],
       errorCode: "NOT_CONFIGURED", errorMessage: "Apify is not configured. Accepted variable names: APIFY_API_TOKEN, APIFY_API_KEY, or APIFY_TOKEN. Set one on the Render web service that runs this application, then redeploy.",
