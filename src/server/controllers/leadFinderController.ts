@@ -43,7 +43,8 @@ export class LeadFinderController {
     const runId = String(req.params.runId || "");
     const candidateIndex = Number(req.params.candidateIndex);
     const companyName = typeof req.body?.companyName === "string" ? req.body.companyName : undefined;
-    const result = await LeadFinderService.approveRejectedCandidate(req.user!, runId, candidateIndex, companyName);
+    const candidate = req.body?.candidate && typeof req.body.candidate === "object" && !Array.isArray(req.body.candidate) ? req.body.candidate as Record<string, unknown> : undefined;
+    const result = await LeadFinderService.approveRejectedCandidate(req.user!, runId, candidateIndex, companyName, candidate);
     return res.status(201).json(result);
   }
   static async cancel(req: Request, res: Response) { res.json(await LeadFinderService.cancelRun(req.user!)); }

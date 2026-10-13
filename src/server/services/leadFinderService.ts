@@ -127,7 +127,7 @@ export function scoreCandidate(input: { companyName: string; description: string
 export class LeadFinderService {
   private static readonly SETTINGS_ID = "00000000-0000-0000-0000-000000000030";
 
-  static async approveRejectedCandidate(user: User, runId: string, candidateIndex: number, companyNameOverride?: string) {
+  static async approveRejectedCandidate(user: User, runId: string, candidateIndex: number, companyNameOverride?: string, candidateInput?: Record<string, unknown>) {
     if (user.role !== "FOUNDER") throw new Error("Founder access required to approve rejected candidates.");
     const db = getSupabaseClient();
     if (!db) throw new Error("Database is not configured.");
@@ -135,15 +135,23 @@ export class LeadFinderService {
     if (error || !run) throw new Error(error?.message || "Lead Finder run not found.");
     const stats = run.stats && typeof run.stats === "object" ? { ...(run.stats as Record<string, unknown>) } : {};
     const reviewed = Array.isArray(stats.reviewedCandidates) ? [...stats.reviewedCandidates as Array<Record<string, unknown>>] : [];
-    if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= reviewed.length) throw new Error("Candidate review record not found. Refresh the run diagnostics and try again.");
-    const candidate = { ...reviewed[candidateIndex] };
-    if (candidate.outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
-    if (candidate.outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
-    if (candidate.outcome === "DUPLICATE" || candidate.category === "duplicateIdentity") throw new Error("This candidate was marked as a duplicate. Open the existing prospect in the Lead Directory instead of creating another record.");
-    if (candidate.outcome !== "REJECTED") throw new Error("Only rejected candidates can be manually approved.");
+    const isStoredReview = Number.isInteger(candidateIndex) && candidateIndex >= 0 && candidateIndex < reviewed.length;
+    if (!isStoredReview && (!candidateInput || typeof candidateInput !== "object")) throw new Error("Candidate review record not found. Refresh the run diagnostics and try again.");
+    // Legacy runs may retain a source candidate without a candidate-level review record.
+    // Allow Founder approval of that visible candidate, then append the final decision to the run audit.
+    const candidate = isStoredReview ? { ...reviewed[candidateIndex] } : { ...candidateInput! };
+
+    const outcome = String(candidate.outcome || "").trim().toUpperCase();
+    const category = String(candidate.category || "").trim();
+    if (outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
+    if (outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
+    if (outcome === "DUPLICATE" || category === "duplicateIdentity") throw new Error("This candidate was marked as a duplicate. Open the existing prospect in the Lead Directory instead of creating another record.");
+    // The audit trail can contain rejected candidates with different or future outcome labels.
+    // Allow founder review of any unresolved candidate, while retaining hard duplicate protection
+    // and the canonical CRM duplicate check below.
     const companyName = (companyNameOverride || String(candidate.companyName || "")).trim();
     if (companyName.length < 3 || companyName.length > 160) throw new Error("Enter a valid company name between 3 and 160 characters.");
-    const rawPhone = String(candidate.contactPhone || "").trim();
+    const rawPhone = String(candidate.contactPhone || candidate.phone || "").trim();
     const phoneCheck = validateNigerianMobilePhone(rawPhone);
     const validPhone = phoneCheck.isValid ? phoneCheck.normalized : undefined;
     const email = String(candidate.email || "").trim() || undefined;
@@ -167,7 +175,8 @@ export class LeadFinderService {
     candidate.approvedBy = user.id;
     candidate.approvedCompanyName = companyName;
     candidate.contactSaved = Boolean(validPhone || email);
-    reviewed[candidateIndex] = candidate;
+    if (isStoredReview) reviewed[candidateIndex] = candidate;
+    else reviewed.push({ ...candidate, reviewId: crypto.randomUUID() });
     stats.reviewedCandidates = reviewed;
     stats.manuallyApproved = Number(stats.manuallyApproved || 0) + 1;
     const { error: updateError } = await db.from("lead_finder_runs").update({ stats }).eq("id", runId);
