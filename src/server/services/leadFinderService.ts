@@ -352,6 +352,7 @@ export class LeadFinderService {
 
           if (!companyKey || existing.has(companyKey) || seen.has(companyKey)) {
             duplicate++;
+            rejectionReasons.duplicateIdentity++;
             recordReview(candidate, "DUPLICATE", "Company identity already exists in the CRM or this scan");
             continue;
           }
