@@ -476,9 +476,6 @@ export class LeadFinderService {
             continue;
           }
 
-          seenCompanyNames.add(companyKey);
-          identifiers.forEach((id) => seenContactIdentifiers.add(id));
-
           const scoreData = scoreCandidate({
             companyName,
             description: candidate.description || "",
@@ -570,6 +567,10 @@ export class LeadFinderService {
               outreachReady: true,
               breakdown: scoreData.breakdown
             });
+            // Only a successfully qualified and persisted lead should reserve its identities
+            // for duplicate detection during this run.
+            seenCompanyNames.add(companyKey);
+            identifiers.forEach((id) => seenContactIdentifiers.add(id));
           } catch (error) {
             rejectionReasons.persistenceError++;
             rejected++;
