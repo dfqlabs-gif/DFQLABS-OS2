@@ -341,7 +341,7 @@ export class LeadFinderService {
     const created: Candidate[] = [];
     let found = 0, qualified = 0, duplicate = 0, rejected = 0;
     const rejectionReasons: Record<string, number> = {
-      genericCompanyName: 0, directoryPage: 0, invalidNigeriaPhone: 0, duplicateIdentity: 0, belowMinimumScore: 0, persistenceError: 0
+      genericCompanyName: 0, directoryPage: 0, invalidNigeriaPhone: 0, duplicateIdentity: 0, potentialDuplicate: 0, belowMinimumScore: 0, persistenceError: 0
     };
 
     const sourceStats: Record<string, SourceQueryResult> = {};
