@@ -172,11 +172,24 @@ export class PersistentProspectService {
 
   static async duplicateCheck(input:{phone?:string;whatsapp?:string;email?:string;social?:string;website?:string;company?:string}, _user:User) {
     const db=getSupabaseClient(); if(!db) return null;
+    const findLead = async (leadId: string) => {
+      const { data } = await db.from("leads").select("id,company_name,owner_user_id").eq("id", leadId).maybeSingle();
+      return data;
+    };
+    const exactMatch = async (leadId: string, reason: string) => {
+      const lead = await findLead(leadId);
+      const companyName = lead?.company_name || "Existing lead";
+      return {
+        matchType: "EXACT_MATCH" as const,
+        matchedLead: { id: leadId, companyName, ownerName: lead?.owner_user_id || "Existing owner" },
+        reason: `${reason} Matched existing lead: ${companyName} (ID: ${leadId}).`
+      };
+    };
     const phone=input.phone||input.whatsapp ? normalizePhone(input.phone||input.whatsapp||"") : "";
-    if(phone){const {data}=await db.from("lead_contacts").select("lead_id").in("contact_type",["PHONE","WHATSAPP"]).eq("normalized_value",phone).limit(1);if(data?.[0])return {matchType:"EXACT_MATCH" as const,matchedLead:{id:data[0].lead_id,companyName:"Existing lead",ownerName:"Existing owner"},reason:"Normalized phone/WhatsApp number matches an existing lead."};}
-    if(input.email){const {data}=await db.from("lead_contacts").select("lead_id").eq("contact_type","EMAIL").eq("normalized_value",input.email.trim().toLowerCase()).limit(1);if(data?.[0])return {matchType:"EXACT_MATCH" as const,matchedLead:{id:data[0].lead_id,companyName:"Existing lead",ownerName:"Existing owner"},reason:"Email matches an existing lead."};}
-    for(const [platform,value] of [["INSTAGRAM",input.social],["WEBSITE",input.website]] as const){if(!value)continue;const n=normalizeSocialIdentifier(value);const {data}=await db.from("lead_social_profiles").select("lead_id").eq("platform",platform).eq("normalized_identifier",n).limit(1);if(data?.[0])return {matchType:"EXACT_MATCH" as const,matchedLead:{id:data[0].lead_id,companyName:"Existing lead",ownerName:"Existing owner"},reason:`Normalized ${platform.toLowerCase()} matches an existing lead.`};}
-    if(input.company){const {data}=await db.from("leads").select("id,company_name,owner_user_id").ilike("company_name",input.company).limit(1);if(data?.[0])return {matchType:"POTENTIAL_MATCH" as const,matchedLead:{id:data[0].id,companyName:data[0].company_name,ownerName:data[0].owner_user_id},reason:"Company name matches an existing lead."};}
+    if(phone){const {data}=await db.from("lead_contacts").select("lead_id").in("contact_type",["PHONE","WHATSAPP"]).eq("normalized_value",phone).limit(1);if(data?.[0])return exactMatch(data[0].lead_id,"Normalized phone/WhatsApp number matches an existing lead.");}
+    if(input.email){const {data}=await db.from("lead_contacts").select("lead_id").eq("contact_type","EMAIL").eq("normalized_value",input.email.trim().toLowerCase()).limit(1);if(data?.[0])return exactMatch(data[0].lead_id,"Email matches an existing lead.");}
+    for(const [platform,value] of [["INSTAGRAM",input.social],["WEBSITE",input.website]] as const){if(!value)continue;const n=normalizeSocialIdentifier(value);const {data}=await db.from("lead_social_profiles").select("lead_id").eq("platform",platform).eq("normalized_identifier",n).limit(1);if(data?.[0])return exactMatch(data[0].lead_id,`Normalized ${platform.toLowerCase()} matches an existing lead.`);}
+    if(input.company){const {data}=await db.from("leads").select("id,company_name,owner_user_id").ilike("company_name",input.company).limit(1);if(data?.[0])return {matchType:"POTENTIAL_MATCH" as const,matchedLead:{id:data[0].id,companyName:data[0].company_name,ownerName:data[0].owner_user_id},reason:`Company name matches "${data[0].company_name}" (ID: ${data[0].id}); no exact contact or social identity matched.`};}
     return {matchType:"NO_MATCH" as const};
   }
 
