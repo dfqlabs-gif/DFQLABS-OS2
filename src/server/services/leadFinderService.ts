@@ -334,7 +334,6 @@ export class LeadFinderService {
     const discoveryLocations = [...new Set([...settings.locations, ...SUPPLEMENTAL_NIGERIAN_MARKETS])];
 
     const existing = await this.existingIdentifiers();
-    const seen = new Set<string>();
     const seenCompanyNames = new Set<string>();
     const seenContactIdentifiers = new Set<string>();
     const created: Candidate[] = [];
