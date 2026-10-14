@@ -166,7 +166,6 @@ export class LeadFinderService {
     const candidate = isStoredReview ? { ...reviewed[candidateIndex] } : { ...candidateInput! };
 
     const outcome = String(candidate.outcome || "").trim().toUpperCase();
-    const category = String(candidate.category || "").trim();
     if (outcome === "APPROVED") throw new Error("This candidate has already been approved into the Lead Directory.");
     if (outcome === "QUALIFIED") throw new Error("This candidate is already in the Lead Directory.");
     // Historical runs may have labelled a candidate DUPLICATE based on company name alone.
