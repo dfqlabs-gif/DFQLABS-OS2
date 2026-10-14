@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LeadFinderService } from "../../src/server/services/leadFinderService.js";
+import { LeadFinderService, assessLeadFinderDuplicate } from "../../src/server/services/leadFinderService.js";
 import { User } from "../../src/shared/types/index.js";
 
 // Mock Supabase client module
@@ -32,5 +32,46 @@ describe("LeadFinderService", () => {
     expect(summary.status).toBe("NOT_CONFIGURED");
     expect(summary.newQualifiedToday).toBe(0);
     expect(summary.remaining).toBe(30);
+  });
+});
+
+describe("Lead Finder duplicate assessment", () => {
+  const base = {
+    companyKey: "f sky homes",
+    identifiers: ["+2348012345678", "fskyhomes.com", "fskyhomes"],
+    existingCompanyNames: new Set<string>(),
+    existingContactIdentifiers: new Set<string>(),
+    existingSocialIdentifiers: new Set<string>(),
+    seenCompanyNames: new Set<string>(),
+    seenContactIdentifiers: new Set<string>()
+  };
+
+  it("treats an exact normalized phone identity as a confirmed duplicate", () => {
+    const result = assessLeadFinderDuplicate({
+      ...base,
+      existingContactIdentifiers: new Set(["+2348012345678"])
+    });
+    expect(result).toBe("CONFIRMED_DUPLICATE");
+  });
+
+  it("does not treat a company-name-only match as a confirmed duplicate", () => {
+    const result = assessLeadFinderDuplicate({
+      ...base,
+      existingCompanyNames: new Set(["f sky homes"])
+    });
+    expect(result).toBe("POTENTIAL_DUPLICATE");
+  });
+
+  it("prioritizes exact identity evidence over a company-name-only match", () => {
+    const result = assessLeadFinderDuplicate({
+      ...base,
+      existingCompanyNames: new Set(["f sky homes"]),
+      existingSocialIdentifiers: new Set(["fskyhomes"])
+    });
+    expect(result).toBe("CONFIRMED_DUPLICATE");
+  });
+
+  it("returns no match when neither name nor contact identity matches", () => {
+    expect(assessLeadFinderDuplicate(base)).toBe("NO_MATCH");
   });
 });

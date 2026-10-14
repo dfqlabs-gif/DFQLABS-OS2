@@ -458,7 +458,9 @@ export const LeadFinderPage: React.FC = () => {
                 const outcome = String(candidate.outcome || "DISCOVERED").trim().toUpperCase();
                 const isDuplicate = outcome === "DUPLICATE" || candidate.category === "duplicateIdentity";
                 const alreadyInDirectory = outcome === "APPROVED" || outcome === "QUALIFIED";
-                const canApprove = activeRole === "FOUNDER" && (hasReviewTrail ? sourceIndex >= 0 : true) && !isDuplicate && !alreadyInDirectory;
+                // Old runs may have called a name-only match a duplicate. Let the server re-check
+                // canonical contact/social identity before deciding whether approval is blocked.
+                const canApprove = activeRole === "FOUNDER" && (hasReviewTrail ? sourceIndex >= 0 : true) && !alreadyInDirectory;
                 return (
                 <tr key={String(candidate.reviewId || candidate.companyName || "candidate") + "-" + index}>
                   <td><strong>{String(candidate.approvedCompanyName || candidate.companyName || "Unnamed candidate")}</strong><small>{String(candidate.description || "").slice(0, 180)}</small></td>
@@ -481,8 +483,9 @@ export const LeadFinderPage: React.FC = () => {
                         window.alert(`${result.companyName} was added to Lead Directory.${result.contactSaved ? "" : "\n\nNo phone or email was saved. Add contact details before outreach."}${result.phoneRejected ? "\n\nThe original phone failed validation and was kept only in the review note." : ""}`);
                       } catch (e) { setError(e instanceof Error ? e.message : "Could not approve this candidate."); }
                       finally { setApprovingCandidate(null); }
-                    }}>{approvingCandidate === approvalKey ? "Approving…" : "Approve to Directory"}</button>}
-                    {!canApprove && activeRole === "FOUNDER" && <small className="approval-unavailable-reason">{isDuplicate ? "Approval unavailable: duplicate identity. Open the existing lead." : alreadyInDirectory ? "Already in the Lead Directory." : "Approval unavailable for this record."}</small>}
+                    }}>{approvingCandidate === approvalKey ? (isDuplicate ? "Checking identity…" : "Approving…") : (isDuplicate ? "Verify identity / Review" : "Approve to Directory")}</button>}
+                    {isDuplicate && canApprove && <small className="approval-unavailable-reason">This run marked the candidate as a duplicate. Verify the identity; exact contact matches will be blocked, while name-only matches require your review.</small>}
+                    {!canApprove && activeRole === "FOUNDER" && <small className="approval-unavailable-reason">{alreadyInDirectory ? "Already in the Lead Directory." : "Approval unavailable for this record."}</small>}
                   </td>
                 </tr>
                 );
