@@ -28,7 +28,7 @@ export class LeadFinderController {
         if (current) {
           const { error: writeError } = await db.from("lead_finder_runs").update({
             status: "FAILED", completed_at: new Date().toISOString(),
-            stats: { ...(current.stats && typeof current.stats === "object" ? current.stats : {}), failureCode: "BACKGROUND_RUN_UNHANDLED_ERROR", phase: "FAILED", statusMessage: "Lead Finder stopped because an unexpected backend error occurred.", errorMessage: message.slice(0, 1000) }
+            stats: { ...(current.stats && typeof current.stats === "object" ? current.stats : {}), failureCode: "BACKGROUND_RUN_UNHANDLED_ERROR", phase: "FAILED", statusMessage: "Lead Finder stopped: " + message.slice(0, 300), errorMessage: message.slice(0, 1000) }
           }).eq("id", run.id).eq("status", "RUNNING");
           if (writeError) throw new Error(writeError.message);
         }

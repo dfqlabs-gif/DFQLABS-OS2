@@ -28,6 +28,13 @@ function decode(token: string): SessionPayload | null {
   } catch { return null; }
 }
 
+export function getLoginOptions() {
+  return {
+    founderEmail: env.MVP_FOUNDER_EMAIL,
+    specialistEmail: env.MVP_SPECIALIST_EMAIL
+  };
+}
+
 export async function authenticateCredentials(email: string, password: string): Promise<{ user: User; token: string } | null> {
   const configured = [
     { email: env.MVP_FOUNDER_EMAIL, password: env.MVP_FOUNDER_PASSWORD, role: "FOUNDER" as const, id: "00000000-0000-0000-0000-000000000001", name: "Founder" },

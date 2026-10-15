@@ -1,8 +1,15 @@
 import { Request, Response } from "express";
-import { authenticateCredentials } from "../services/authService.js";
+import { authenticateCredentials, getLoginOptions } from "../services/authService.js";
 import { LeadService } from "../services/leadService.js";
 
 export class AuthController {
+  public static options(_req: Request, res: Response): void {
+    res.status(200).json({ roles: [
+      { role: "FOUNDER", label: "Founder", email: getLoginOptions().founderEmail },
+      { role: "OUTREACH_SPECIALIST", label: "Outreach Specialist", email: getLoginOptions().specialistEmail }
+    ] });
+  }
+
   public static async login(req: Request, res: Response): Promise<void> {
     const { email, password } = req.body;
     const result = await authenticateCredentials(email, password);

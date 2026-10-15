@@ -6,6 +6,7 @@ import { validateRequest } from "../middleware/validate.js";
 
 const router = Router();
 
+router.get("/options", AuthController.options);
 router.post("/login", validateRequest(LoginSchema), AuthController.login);
 router.get("/me", authenticateUser, AuthController.me);
 
