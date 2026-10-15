@@ -77,6 +77,10 @@ export class ApiClient {
     }
   }
 
+  public static getAuthOptions(): Promise<{ roles: Array<{ role: "FOUNDER" | "OUTREACH_SPECIALIST"; label: string; email: string }> }> {
+    return this.request("/api/v1/auth/options", { skipAuth: true } as RequestInit);
+  }
+
   public static login(email: string, password: string): Promise<{ token: string; user: User; seat?: OutreachSeat }> {
     return this.request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }), skipAuth: true } as RequestInit);
   }
