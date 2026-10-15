@@ -373,11 +373,15 @@ export class LeadFinderService {
           stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, reviewedCandidates, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
         }).eq("id", run.id).eq("status", "RUNNING");
         if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
-        const result = await source.discoverCandidates(location, settings.industries.filter((value) => typeof value === "string" && value.trim()).join("; ") || "real estate", source.name === "APIFY_NPC" ? 10 : 40);
-        // Search snippets often omit contact details even when the business publishes a phone
-        // number on its own public website/profile. Enrich candidates before the phone qualification gate.
-        // Apply the directory-page gate to every provider (including Serper), not just the
-        // public-directory provider. A directory is never itself an outreach prospect.
+        let result: SourceQueryResult;
+        try {
+          result = await source.discoverCandidates(location, settings.industries.filter((value) => typeof value === "string" && value.trim()).join("; ") || "real estate", source.name === "APIFY_NPC" ? 10 : 40);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          result = { sourceName: source.name, attempted: true, succeeded: false, queriesCount: 0, candidates: [], errorCode: "PROVIDER_EXECUTION_ERROR", errorMessage: message.slice(0, 500), executionDurationMs: 0 };
+          console.warn(`[Lead Finder] Provider ${source.name} failed for ${location}; continuing with other searches:`, message);
+        }
+        // Apply the directory-page gate to every provider. A directory is not an outreach prospect.
         const candidateResults = result.candidates.filter((candidate) => {
           if (!isDirectoryCandidate(candidate)) return true;
           found++;
@@ -386,17 +390,31 @@ export class LeadFinderService {
           recordReview(candidate, "REJECTED", "Directory/search-results page, not an identifiable real-estate business");
           return false;
         });
-        const enrichedCandidates = await PublicContactEnricher.enrich(candidateResults);
+        let enrichedCandidates: RawCandidate[];
+        try {
+          enrichedCandidates = await PublicContactEnricher.enrich(candidateResults);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`[Lead Finder] Contact enrichment failed for ${source.name} / ${location}; continuing with discovered records:`, message);
+          enrichedCandidates = candidateResults;
+        }
         // Resolve generic property-ad headlines against original source evidence before qualification.
-        const resolvedCandidates = await CompanyIdentityResolver.resolve(enrichedCandidates, location);
-        const resolvedResult = { ...result, candidates: resolvedCandidates };
+        let resolvedCandidates: RawCandidate[];
+        try {
+          resolvedCandidates = await CompanyIdentityResolver.resolve(enrichedCandidates, location);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`[Lead Finder] Identity resolution failed for ${source.name} / ${location}; continuing with original identities:`, message);
+          resolvedCandidates = enrichedCandidates;
+        }
+        const resolvedResult = { ...result, candidates: resolvedCandidates.slice(0, 120) };
         const priorStats = sourceStats[source.name];
         sourceStats[source.name] = priorStats ? {
           sourceName: source.name,
           attempted: priorStats.attempted || result.attempted,
           succeeded: priorStats.succeeded || result.succeeded,
           queriesCount: priorStats.queriesCount + result.queriesCount,
-          candidates: [...priorStats.candidates, ...resolvedCandidates],
+          candidates: [...priorStats.candidates, ...resolvedCandidates].slice(0, 120),
           errorCode: result.errorCode || priorStats.errorCode,
           errorMessage: result.errorMessage || priorStats.errorMessage,
           executionDurationMs: (priorStats.executionDurationMs || 0) + (result.executionDurationMs || 0)
