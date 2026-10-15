@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Command } from "lucide-react";
+import { Search, Command, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.js";
 
 interface HeaderProps {
@@ -8,7 +8,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
-  const { user, seat, activeRole } = useAuth();
+  const { user, seat, activeRole, logout } = useAuth();
 
   return (
     <header className="header">
@@ -28,9 +28,13 @@ export const Header: React.FC<HeaderProps> = ({ title, onOpenCommand }) => {
         )}
         {activeRole !== "FOUNDER" && <span className="role-badge role-specialist">{activeRole === "OUTREACH_SPECIALIST" ? "SPECIALIST" : activeRole}</span>}
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "13px", fontWeight: 600 }}>{activeRole === "FOUNDER" ? "CEO" : (user?.fullName ?? "Loading...")}</div>
-          {activeRole !== "FOUNDER" && <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user?.email}</div>}
+          <div style={{ fontSize: "13px", fontWeight: 600 }}>{activeRole === "FOUNDER" ? "Founder" : (user?.fullName ?? "Loading...")}</div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{user?.email}</div>
+          <div style={{ fontSize: "10px", color: "var(--text-secondary)", marginTop: "2px" }}>{activeRole === "FOUNDER" ? "Founder workspace" : "Outreach Specialist workspace"}</div>
         </div>
+        <button type="button" onClick={logout} className="btn-ghost" title="Log out and switch account" aria-label="Log out and switch account" style={{display:"inline-flex",alignItems:"center",gap:"7px",marginLeft:"12px",whiteSpace:"nowrap"}}>
+          <LogOut size={15} /> <span>Log out</span>
+        </button>
       </div>
     </header>
   );
