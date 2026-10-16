@@ -1,4 +1,4 @@
-import { Lead, LeadContact, LeadSocialProfile, LeadEvidence, Message, User } from "../../shared/types/index.js";
+import { FocusItem, Lead, LeadContact, LeadSocialProfile, LeadEvidence, Message, TodayFocusMetrics, User } from "../../shared/types/index.js";
 import { getSupabaseClient } from "../config/supabase.js";
 import { normalizePhone } from "../utils/phoneNormalizer.js";
 import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
@@ -111,6 +111,99 @@ export class PersistentProspectService {
       }, { onConflict: "id" });
       if (seatError) throw new Error(seatError.message);
     }
+  }
+
+  static async getTodayFocus(user: User, target = 30): Promise<{ focusItems: FocusItem[]; metrics: TodayFocusMetrics }> {
+    const db = getSupabaseClient();
+    if (!db) throw new Error("Persistent database is not configured");
+    await this.ensureUser(user);
+
+    const now = new Date();
+    const lagosNow = new Date(now.getTime() + 60 * 60 * 1000);
+    const dayStart = new Date(Date.UTC(lagosNow.getUTCFullYear(), lagosNow.getUTCMonth(), lagosNow.getUTCDate()) - 60 * 60 * 1000).toISOString();
+
+    if (user.role === "OUTREACH_SPECIALIST") {
+      const existing = await this.list(user, { stage: "UNCONTACTED", page: 1, limit: 100 });
+      const contactableCount = (existing?.leads || []).filter((lead) =>
+        (lead.contacts || []).some((contact) => ["PHONE", "WHATSAPP"].includes(contact.contactType) && contact.normalizedValue)
+      ).length;
+      const needed = Math.max(0, target - contactableCount);
+      if (needed > 0) {
+        const { data: founders, error: foundersError } = await db.from("users").select("id").eq("role", "FOUNDER").eq("is_active", true);
+        if (foundersError) throw new Error(foundersError.message);
+        const founderIds = (founders || []).map((row: { id: string }) => row.id).filter((id: string) => id !== user.id);
+        if (founderIds.length) {
+          const { data: candidates, error: candidatesError } = await db.from("leads").select("id,owner_user_id")
+            .in("owner_user_id", founderIds).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED")
+            .order("created_at", { ascending: true }).limit(250);
+          if (candidatesError) throw new Error(candidatesError.message);
+          const candidateIds = (candidates || []).map((row: { id: string }) => row.id);
+          if (candidateIds.length) {
+            const { data: contacts, error: contactsError } = await db.from("lead_contacts").select("lead_id,contact_type,normalized_value")
+              .in("lead_id", candidateIds).in("contact_type", ["PHONE", "WHATSAPP"]);
+            if (contactsError) throw new Error(contactsError.message);
+            const contactableIds = new Set((contacts || []).filter((contact: { normalized_value?: string }) => Boolean(contact.normalized_value)).map((contact: { lead_id: string }) => contact.lead_id));
+            let claimed = 0;
+            for (const candidate of candidates || []) {
+              if (claimed >= needed) break;
+              const row = candidate as { id: string; owner_user_id: string };
+              if (!contactableIds.has(row.id)) continue;
+              const { data: updated, error: claimError } = await db.from("leads").update({ owner_user_id: user.id, updated_at: now.toISOString() })
+                .eq("id", row.id).eq("owner_user_id", row.owner_user_id).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").select("id").maybeSingle();
+              if (claimError) throw new Error(claimError.message);
+              if (updated) claimed += 1;
+            }
+          }
+        }
+      }
+    }
+
+    const firstPage = await this.list(user, { page: 1, limit: 100 });
+    const allLeads: Lead[] = [...(firstPage?.leads || [])];
+    for (let page = 2; page <= (firstPage?.totalPages || 1); page++) {
+      const next = await this.list(user, { page, limit: 100 });
+      if (next) allLeads.push(...next.leads);
+    }
+    const contactable = (lead: Lead) => (lead.contacts || []).some((contact) => ["PHONE", "WHATSAPP"].includes(contact.contactType) && Boolean(contact.normalizedValue));
+    const newLeads = allLeads.filter((lead) => lead.status === "ACTIVE" && lead.pipelineStage === "UNCONTACTED" && contactable(lead))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, target);
+
+    const focusItems: FocusItem[] = [];
+    const inboundLeads = allLeads.filter((lead) => lead.status === "ACTIVE" && lead.pipelineStage === "REPLIED");
+    for (const lead of inboundLeads) focusItems.push({
+      id: `inbound:${lead.id}`, lead,
+      priorityReason: "A prospect has replied and needs a human response.",
+      recommendedAction: "Open the prospect dossier, review the full message exchange, and record the next reply or outcome.",
+      type: "UNREPLIED_INBOUND"
+    });
+
+    const dueFollowUps = allLeads.filter((lead) => lead.status === "ACTIVE" && ["CONTACTED", "NURTURE"].includes(lead.pipelineStage) && lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() <= now.getTime())
+      .sort((a, b) => (a.nextFollowUpAt || "").localeCompare(b.nextFollowUpAt || ""));
+    for (const lead of dueFollowUps) focusItems.push({
+      id: `followup:${lead.id}`, lead,
+      priorityReason: `Follow-up due since ${new Date(lead.nextFollowUpAt!).toLocaleDateString("en-NG")}.`,
+      recommendedAction: "Review the saved conversation and generate a context-aware follow-up.",
+      dueAt: lead.nextFollowUpAt, type: "OVERDUE_FOLLOW_UP"
+    });
+    for (const lead of newLeads) focusItems.push({
+      id: `first-touch:${lead.id}`, lead,
+      priorityReason: "Contactable prospect awaiting first outreach.",
+      recommendedAction: "Generate the first-touch DM, personalize it, open WhatsApp, send it, and confirm it was sent.",
+      type: "UNCONTACTED_PROSPECT"
+    });
+
+    const { data: sentRows, error: sentError } = await db.from("messages").select("id,type").eq("sender_user_id", user.id)
+      .eq("direction", "OUTBOUND").eq("status", "SENT").gte("sent_at", dayStart);
+    if (sentError) throw new Error(sentError.message);
+    const sentToday = sentRows || [];
+    const firstTouchesToday = sentToday.filter((message: { type: string }) => message.type === "FIRST_TOUCH").length;
+    const followUpsSentToday = sentToday.filter((message: { type: string }) => message.type === "FOLLOW_UP").length;
+
+    return { focusItems, metrics: {
+      target, sentToday: sentToday.length, firstTouchesToday, followUpsSentToday,
+      queuedFirstTouches: newLeads.length, dueFollowUps: dueFollowUps.length,
+      unrepliedInbound: inboundLeads.length, remainingFirstTouches: Math.max(0, target - firstTouchesToday)
+    }};
   }
 
   static async list(user: User, query: { search?: string; stage?: string; page?: number; limit?: number }) {
@@ -396,7 +489,7 @@ export class PersistentProspectService {
     const { data: updated, error: e } = await db.from("messages").update({ final_sent_content: finalContent, human_edited_content: finalContent, status: "SENT", sent_at: sentAt }).eq("id", id).select("*").single();
     if (e || !updated) throw new Error(e?.message || "Unable to confirm sent");
 
-    await db.from("leads").update({ pipeline_stage: "CONTACTED", last_contact_at: sentAt, updated_at: sentAt }).eq("id", conversation.lead_id);
+    await db.from("leads").update({ pipeline_stage: "CONTACTED", last_contact_at: sentAt, next_follow_up_at: new Date(new Date(sentAt).getTime() + 3 * 86400000).toISOString(), updated_at: sentAt }).eq("id", conversation.lead_id);
     EventService.logEvent({ eventType: "MESSAGE_SENT", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: id, finalContent } });
     return { message: mapMessage(updated as MessageRow), leadStage: "CONTACTED" };
   }
@@ -447,7 +540,7 @@ export class PersistentProspectService {
       sent_at: timestamp
     }).select("*").single();
     if (error || !data) throw new Error(error?.message || "Unable to record inbound reply");
-    await db.from("leads").update({ pipeline_stage: "REPLIED", updated_at: new Date().toISOString() }).eq("id", conversation.lead_id);
+    await db.from("leads").update({ pipeline_stage: "REPLIED", next_follow_up_at: null, updated_at: new Date().toISOString() }).eq("id", conversation.lead_id);
     await db.from("conversations").update({ last_message_at: timestamp, updated_at: new Date().toISOString() }).eq("id", conversation.id);
     EventService.logEvent({ eventType: "INBOUND_REPLY_RECORDED", leadId: conversation.lead_id, actorUserId: user.id, payload: { messageId: data.id, sentAt: timestamp } });
     return mapMessage(data as MessageRow);

@@ -1,6 +1,7 @@
 import {
   DuplicateCheckResult,
   FocusItem,
+  TodayFocusMetrics,
   Lead,
   LeadContact,
   LeadSocialProfile,
@@ -199,7 +200,7 @@ export class ApiClient {
     });
   }
 
-  public static getTodayFocus(): Promise<{ focusItems: FocusItem[] }> {
+  public static getTodayFocus(): Promise<{ focusItems: FocusItem[]; metrics: TodayFocusMetrics }> {
     return this.request("/api/v1/focus/today");
   }
 

@@ -163,6 +163,17 @@ export interface FocusItem {
   type: "UNREPLIED_INBOUND" | "OVERDUE_FOLLOW_UP" | "UNCONTACTED_PROSPECT";
 }
 
+export interface TodayFocusMetrics {
+  target: number;
+  sentToday: number;
+  firstTouchesToday: number;
+  followUpsSentToday: number;
+  queuedFirstTouches: number;
+  dueFollowUps: number;
+  unrepliedInbound: number;
+  remainingFirstTouches: number;
+}
+
 export interface MissionControlMetrics {
   totalLeads: number;
   uncontactedLeads: number;
