@@ -184,14 +184,25 @@ export class PersistentProspectService {
       type: "UNREPLIED_INBOUND"
     });
 
-    const dueFollowUps = allLeads.filter((lead) => lead.status === "ACTIVE" && ["CONTACTED", "NURTURE"].includes(lead.pipelineStage) && lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() <= now.getTime())
-      .sort((a, b) => (a.nextFollowUpAt || "").localeCompare(b.nextFollowUpAt || ""));
-    for (const lead of dueFollowUps) focusItems.push({
-      id: `followup:${lead.id}`, lead,
-      priorityReason: `Follow-up due since ${new Date(lead.nextFollowUpAt!).toLocaleDateString("en-NG")}.`,
-      recommendedAction: "Review the saved conversation and generate a context-aware follow-up.",
-      dueAt: lead.nextFollowUpAt, type: "OVERDUE_FOLLOW_UP"
-    });
+    const followUpDueAt = (lead: Lead): string | undefined => {
+      if (lead.nextFollowUpAt) return lead.nextFollowUpAt;
+      if (lead.lastContactAt) return new Date(new Date(lead.lastContactAt).getTime() + 3 * 86400000).toISOString();
+      return undefined;
+    };
+    const dueFollowUps = allLeads.filter((lead) => {
+      if (lead.status !== "ACTIVE" || !["CONTACTED", "NURTURE"].includes(lead.pipelineStage)) return false;
+      const dueAt = followUpDueAt(lead);
+      return Boolean(dueAt && new Date(dueAt).getTime() <= now.getTime());
+    }).sort((a, b) => (followUpDueAt(a) || "").localeCompare(followUpDueAt(b) || ""));
+    for (const lead of dueFollowUps) {
+      const dueAt = followUpDueAt(lead)!;
+      focusItems.push({
+        id: `followup:${lead.id}`, lead,
+        priorityReason: `Follow-up due since ${new Date(dueAt).toLocaleDateString("en-NG")}.`,
+        recommendedAction: "Review the saved conversation and generate a context-aware follow-up.",
+        dueAt, type: "OVERDUE_FOLLOW_UP"
+      });
+    }
     for (const lead of newLeads) focusItems.push({
       id: `first-touch:${lead.id}`, lead,
       priorityReason: "Contactable prospect awaiting first outreach.",
