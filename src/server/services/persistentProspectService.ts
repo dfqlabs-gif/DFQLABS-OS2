@@ -105,11 +105,16 @@ export class PersistentProspectService {
     }, { onConflict: "id" });
     if (error) throw new Error(error.message);
     if (user.role === "OUTREACH_SPECIALIST") {
-      const { error: seatError } = await db.from("outreach_seats").upsert({
-        id: "10000000-0000-0000-0000-000000000001", seat_code: "SEAT_A", display_name: "Outreach Seat A",
-        current_user_id: user.id, daily_outreach_target: 30, updated_at: new Date().toISOString()
-      }, { onConflict: "id" });
-      if (seatError) throw new Error(seatError.message);
+      const seatId = "10000000-0000-0000-0000-000000000001";
+      const { data: seat, error: lookupError } = await db.from("outreach_seats").select("id").eq("id", seatId).maybeSingle();
+      if (lookupError) throw new Error(lookupError.message);
+      if (seat) {
+        const { error } = await db.from("outreach_seats").update({ current_user_id: user.id, updated_at: new Date().toISOString() }).eq("id", seatId);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await db.from("outreach_seats").insert({ id: seatId, seat_code: "SEAT_A", display_name: "Outreach Seat A", current_user_id: user.id, daily_outreach_target: 30, updated_at: new Date().toISOString() });
+        if (error) throw new Error(error.message);
+      }
     }
   }
 
@@ -117,131 +122,109 @@ export class PersistentProspectService {
     const db = getSupabaseClient();
     if (!db) throw new Error("Persistent database is not configured");
     await this.ensureUser(user);
-
     const now = new Date();
-    const lagosNow = new Date(now.getTime() + 60 * 60 * 1000);
-    const dayStart = new Date(Date.UTC(lagosNow.getUTCFullYear(), lagosNow.getUTCMonth(), lagosNow.getUTCDate()) - 60 * 60 * 1000).toISOString();
+    // Daily reporting follows the Nigeria (Africa/Lagos) calendar day.
+    const local = new Date(now.getTime() + 60 * 60 * 1000);
+    const midnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - 60 * 60 * 1000;
+    const dayStart = new Date(midnight).toISOString();
+    const dayEnd = new Date(midnight + 86400000).toISOString();
+    let dailyTarget = target;
 
     if (user.role === "OUTREACH_SPECIALIST") {
-      const existing = await this.list(user, { stage: "UNCONTACTED", page: 1, limit: 100 });
-      const contactableCount = (existing?.leads || []).filter((lead) =>
-        (lead.contacts || []).some((contact) => ["PHONE", "WHATSAPP"].includes(contact.contactType) && contact.normalizedValue)
-      ).length;
-      const needed = Math.max(0, target - contactableCount);
+      const { data: seat, error: seatError } = await db.from("outreach_seats").select("daily_outreach_target").eq("id", "10000000-0000-0000-0000-000000000001").maybeSingle();
+      if (seatError) throw new Error(seatError.message);
+      const configured = Number(seat?.daily_outreach_target);
+      if (Number.isFinite(configured) && configured > 0 && configured <= 500) dailyTarget = Math.floor(configured);
+
+      const { data: users, error: usersError } = await db.from("users").select("id,role,is_active");
+      if (usersError) throw new Error(usersError.message);
+      const activeSpecialists = new Set((users || []).filter((x: {role:string;is_active:boolean}) => x.role === "OUTREACH_SPECIALIST" && x.is_active).map((x: {id:string}) => x.id));
+
+      const { data: todayRows, error: todayError } = await db.from("messages").select("id,type")
+        .eq("sender_user_id", user.id).eq("direction", "OUTBOUND").eq("status", "SENT").gte("sent_at", dayStart).lt("sent_at", dayEnd);
+      if (todayError) throw new Error(todayError.message);
+      const sentToday = todayRows || [];
+      const sentFirstTouches = sentToday.filter((x: {type:string}) => x.type === "FIRST_TOUCH").length;
+      const remaining = Math.max(0, dailyTarget - sentFirstTouches);
+
+      // Count the complete assigned queue instead of only the first page.
+      const { data: ownedRows, error: ownedError } = await db.from("leads").select("id")
+        .eq("owner_user_id", user.id).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").limit(2000);
+      if (ownedError) throw new Error(ownedError.message);
+      const ownedIds = (ownedRows || []).map((x: {id:string}) => x.id);
+      const ownedContactable = new Set<string>();
+      for (let i = 0; i < ownedIds.length; i += 200) {
+        const { data, error } = await db.from("lead_contacts").select("lead_id,normalized_value")
+          .in("lead_id", ownedIds.slice(i, i + 200)).in("contact_type", ["PHONE", "WHATSAPP"]);
+        if (error) throw new Error(error.message);
+        for (const c of data || []) if ((c as {normalized_value?:string}).normalized_value) ownedContactable.add((c as {lead_id:string}).lead_id);
+      }
+      const needed = Math.max(0, remaining - ownedContactable.size);
       if (needed > 0) {
-        const { data: founders, error: foundersError } = await db.from("users").select("id").eq("role", "FOUNDER").eq("is_active", true);
-        if (foundersError) throw new Error(foundersError.message);
-        const founderIds = (founders || []).map((row: { id: string }) => row.id).filter((id: string) => id !== user.id);
-        if (founderIds.length) {
-          const { data: candidates, error: candidatesError } = await db.from("leads").select("id,owner_user_id")
-            .in("owner_user_id", founderIds).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED")
-            .order("created_at", { ascending: true }).limit(250);
-          if (candidatesError) throw new Error(candidatesError.message);
-          const candidateIds = (candidates || []).map((row: { id: string }) => row.id);
-          if (candidateIds.length) {
-            const { data: contacts, error: contactsError } = await db.from("lead_contacts").select("lead_id,contact_type,normalized_value")
-              .in("lead_id", candidateIds).in("contact_type", ["PHONE", "WHATSAPP"]);
-            if (contactsError) throw new Error(contactsError.message);
-            const contactableIds = new Set((contacts || []).filter((contact: { normalized_value?: string }) => Boolean(contact.normalized_value)).map((contact: { lead_id: string }) => contact.lead_id));
-            let claimed = 0;
-            for (const candidate of candidates || []) {
-              if (claimed >= needed) break;
-              const row = candidate as { id: string; owner_user_id: string };
-              if (!contactableIds.has(row.id)) continue;
-              const { data: updated, error: claimError } = await db.from("leads").update({ owner_user_id: user.id, updated_at: now.toISOString() })
-                .eq("id", row.id).eq("owner_user_id", row.owner_user_id).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").select("id").maybeSingle();
-              if (claimError) throw new Error(claimError.message);
-              if (updated) claimed += 1;
-            }
-          }
+        const { data: candidates, error } = await db.from("leads").select("id,owner_user_id")
+          .eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").order("created_at", {ascending:true}).limit(1000);
+        if (error) throw new Error(error.message);
+        const eligible = (candidates || []).filter((x: {id:string;owner_user_id:string}) =>
+          x.owner_user_id !== user.id && !activeSpecialists.has(x.owner_user_id));
+        const ids = eligible.map((x: {id:string}) => x.id);
+        const contactable = new Set<string>();
+        for (let i = 0; i < ids.length; i += 200) {
+          const { data, error: contactError } = await db.from("lead_contacts").select("lead_id,normalized_value")
+            .in("lead_id", ids.slice(i, i + 200)).in("contact_type", ["PHONE", "WHATSAPP"]);
+          if (contactError) throw new Error(contactError.message);
+          for (const c of data || []) if ((c as {normalized_value?:string}).normalized_value) contactable.add((c as {lead_id:string}).lead_id);
         }
-      }
-    }
-
-    if (user.role === "OUTREACH_SPECIALIST") {
-      const { data: founders, error: foundersError } = await db.from("users").select("id").eq("role", "FOUNDER").eq("is_active", true);
-      if (foundersError) throw new Error(foundersError.message);
-      const founderIds = (founders || []).map((row: { id: string }) => row.id).filter((id: string) => id !== user.id);
-      if (founderIds.length) {
-        const { data: actionable, error: actionableError } = await db.from("leads")
-          .select("id,owner_user_id,pipeline_stage,last_contact_at,next_follow_up_at")
-          .in("owner_user_id", founderIds).eq("status", "ACTIVE")
-          .in("pipeline_stage", ["REPLIED", "CONTACTED", "NURTURE"])
-          .order("updated_at", { ascending: true }).limit(500);
-        if (actionableError) throw new Error(actionableError.message);
-        for (const candidate of actionable || []) {
-          const row = candidate as { id: string; owner_user_id: string; pipeline_stage: string; last_contact_at?: string | null; next_follow_up_at?: string | null };
-          let needsAction = row.pipeline_stage === "REPLIED";
-          if (!needsAction) {
-            const dueAt = row.next_follow_up_at || (row.last_contact_at ? new Date(new Date(row.last_contact_at).getTime() + 3 * 86400000).toISOString() : null);
-            needsAction = Boolean(dueAt && new Date(dueAt).getTime() <= now.getTime());
-          }
-          if (!needsAction) continue;
-          // Only claim if the owner has not changed since discovery.
-          const { error: claimError } = await db.from("leads").update({ owner_user_id: user.id, updated_at: now.toISOString() })
-            .eq("id", row.id).eq("owner_user_id", row.owner_user_id).eq("status", "ACTIVE").select("id").maybeSingle();
+        let claimed = 0;
+        for (const candidate of eligible) {
+          if (claimed >= needed) break;
+          const row = candidate as {id:string;owner_user_id:string};
+          if (!contactable.has(row.id)) continue;
+          const { data, error: claimError } = await db.from("leads").update({owner_user_id:user.id,updated_at:now.toISOString()})
+            .eq("id",row.id).eq("owner_user_id",row.owner_user_id).eq("status","ACTIVE").eq("pipeline_stage","UNCONTACTED").select("id").maybeSingle();
           if (claimError) throw new Error(claimError.message);
+          if (data) claimed++;
         }
+      }
+
+      // Adopt only actionable shared records, never records owned by another active specialist.
+      const { data: actionable, error: actionError } = await db.from("leads").select("id,owner_user_id,pipeline_stage,last_contact_at,next_follow_up_at")
+        .eq("status","ACTIVE").in("pipeline_stage",["REPLIED","CONTACTED","NURTURE"]).order("updated_at",{ascending:true}).limit(1000);
+      if (actionError) throw new Error(actionError.message);
+      for (const item of actionable || []) {
+        const row = item as {id:string;owner_user_id:string;pipeline_stage:string;last_contact_at?:string|null;next_follow_up_at?:string|null};
+        if (row.owner_user_id === user.id || activeSpecialists.has(row.owner_user_id)) continue;
+        const due = row.next_follow_up_at || (row.last_contact_at ? new Date(new Date(row.last_contact_at).getTime()+3*86400000).toISOString() : null);
+        if (row.pipeline_stage !== "REPLIED" && !(due && new Date(due).getTime() <= now.getTime())) continue;
+        const { error: claimError } = await db.from("leads").update({owner_user_id:user.id,updated_at:now.toISOString()})
+          .eq("id",row.id).eq("owner_user_id",row.owner_user_id).eq("status","ACTIVE").select("id").maybeSingle();
+        if (claimError) throw new Error(claimError.message);
       }
     }
 
-    const firstPage = await this.list(user, { page: 1, limit: 100 });
-    const allLeads: Lead[] = [...(firstPage?.leads || [])];
-    for (let page = 2; page <= (firstPage?.totalPages || 1); page++) {
-      const next = await this.list(user, { page, limit: 100 });
-      if (next) allLeads.push(...next.leads);
+    const first = await this.list(user,{page:1,limit:100});
+    const leads: Lead[] = [...(first?.leads || [])];
+    for (let page=2; page <= (first?.totalPages || 1); page++) {
+      const next = await this.list(user,{page,limit:100});
+      if (next) leads.push(...next.leads);
     }
-    const { data: sentRows, error: sentError } = await db.from("messages").select("id,type").eq("sender_user_id", user.id)
-      .eq("direction", "OUTBOUND").eq("status", "SENT").gte("sent_at", dayStart);
+    const {data: sentRows,error: sentError} = await db.from("messages").select("id,type")
+      .eq("sender_user_id",user.id).eq("direction","OUTBOUND").eq("status","SENT").gte("sent_at",dayStart).lt("sent_at",dayEnd);
     if (sentError) throw new Error(sentError.message);
     const sentToday = sentRows || [];
-    const firstTouchesToday = sentToday.filter((message: { type: string }) => message.type === "FIRST_TOUCH").length;
-    const followUpsSentToday = sentToday.filter((message: { type: string }) => message.type === "FOLLOW_UP").length;
-
-    const contactable = (lead: Lead) => (lead.contacts || []).some((contact) => ["PHONE", "WHATSAPP"].includes(contact.contactType) && Boolean(contact.normalizedValue));
-    const newLeads = allLeads.filter((lead) => lead.status === "ACTIVE" && lead.pipelineStage === "UNCONTACTED" && contactable(lead))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, Math.max(0, target - firstTouchesToday));
-
+    const firstTouchesToday = sentToday.filter((x:{type:string})=>x.type==="FIRST_TOUCH").length;
+    const followUpsSentToday = sentToday.filter((x:{type:string})=>x.type==="FOLLOW_UP").length;
+    const contactable = (lead:Lead) => (lead.contacts || []).some(c=>["PHONE","WHATSAPP"].includes(c.contactType)&&Boolean(c.normalizedValue));
+    const newLeads = leads.filter(l=>l.status==="ACTIVE"&&l.pipelineStage==="UNCONTACTED"&&contactable(l))
+      .sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).slice(0,Math.max(0,dailyTarget-firstTouchesToday));
     const focusItems: FocusItem[] = [];
-    const inboundLeads = allLeads.filter((lead) => lead.status === "ACTIVE" && lead.pipelineStage === "REPLIED");
-    for (const lead of inboundLeads) focusItems.push({
-      id: `inbound:${lead.id}`, lead,
-      priorityReason: "A prospect has replied and needs a human response.",
-      recommendedAction: "Open the prospect dossier, review the full message exchange, and record the next reply or outcome.",
-      type: "UNREPLIED_INBOUND"
-    });
-
-    const followUpDueAt = (lead: Lead): string | undefined => {
-      if (lead.nextFollowUpAt) return lead.nextFollowUpAt;
-      if (lead.lastContactAt) return new Date(new Date(lead.lastContactAt).getTime() + 3 * 86400000).toISOString();
-      return undefined;
-    };
-    const dueFollowUps = allLeads.filter((lead) => {
-      if (lead.status !== "ACTIVE" || !["CONTACTED", "NURTURE"].includes(lead.pipelineStage)) return false;
-      const dueAt = followUpDueAt(lead);
-      return Boolean(dueAt && new Date(dueAt).getTime() <= now.getTime());
-    }).sort((a, b) => (followUpDueAt(a) || "").localeCompare(followUpDueAt(b) || ""));
-    for (const lead of dueFollowUps) {
-      const dueAt = followUpDueAt(lead)!;
-      focusItems.push({
-        id: `followup:${lead.id}`, lead,
-        priorityReason: `Follow-up due since ${new Date(dueAt).toLocaleDateString("en-NG")}.`,
-        recommendedAction: "Review the saved conversation and generate a context-aware follow-up.",
-        dueAt, type: "OVERDUE_FOLLOW_UP"
-      });
-    }
-    for (const lead of newLeads) focusItems.push({
-      id: `first-touch:${lead.id}`, lead,
-      priorityReason: "Contactable prospect awaiting first outreach.",
-      recommendedAction: "Generate the first-touch DM, personalize it, open WhatsApp, send it, and confirm it was sent.",
-      type: "UNCONTACTED_PROSPECT"
-    });
-
-    return { focusItems, metrics: {
-      target, sentToday: sentToday.length, firstTouchesToday, followUpsSentToday,
-      queuedFirstTouches: newLeads.length, dueFollowUps: dueFollowUps.length,
-      unrepliedInbound: inboundLeads.length, remainingFirstTouches: Math.max(0, target - firstTouchesToday)
-    }};
+    const inbound = leads.filter(l=>l.status==="ACTIVE"&&l.pipelineStage==="REPLIED");
+    for (const lead of inbound) focusItems.push({id:`inbound:${lead.id}`,lead,priorityReason:"A prospect has replied and needs a human response.",recommendedAction:"Open the prospect dossier, review the full message exchange, and record the next reply or outcome.",type:"UNREPLIED_INBOUND"});
+    const dueAt = (lead:Lead):string|undefined => lead.nextFollowUpAt || (lead.lastContactAt ? new Date(new Date(lead.lastContactAt).getTime()+3*86400000).toISOString() : undefined);
+    const due = leads.filter(l=>l.status==="ACTIVE"&&["CONTACTED","NURTURE"].includes(l.pipelineStage)&&Boolean(dueAt(l)&&new Date(dueAt(l)!).getTime()<=now.getTime()))
+      .sort((a,b)=>(dueAt(a)||"").localeCompare(dueAt(b)||""));
+    for (const lead of due) focusItems.push({id:`followup:${lead.id}`,lead,priorityReason:`Follow-up due since ${new Date(dueAt(lead)!).toLocaleDateString("en-NG")}.`,recommendedAction:"Review the saved conversation and generate a context-aware follow-up.",dueAt:dueAt(lead),type:"OVERDUE_FOLLOW_UP"});
+    for (const lead of newLeads) focusItems.push({id:`first-touch:${lead.id}`,lead,priorityReason:"Contactable prospect awaiting first outreach.",recommendedAction:"Generate the first-touch DM, personalize it, open WhatsApp, send it, and confirm it was sent.",type:"UNCONTACTED_PROSPECT"});
+    return {focusItems,metrics:{target:dailyTarget,sentToday:sentToday.length,firstTouchesToday,followUpsSentToday,queuedFirstTouches:newLeads.length,dueFollowUps:due.length,unrepliedInbound:inbound.length,remainingFirstTouches:Math.max(0,dailyTarget-firstTouchesToday)}};
   }
 
   static async list(user: User, query: { search?: string; stage?: string; page?: number; limit?: number }) {

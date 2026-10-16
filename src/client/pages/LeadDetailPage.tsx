@@ -189,7 +189,7 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
       <div className="thread">
         {conversation.length === 0 ? <div className="empty-state">No messages yet. Generate the first-touch WhatsApp message to begin. After sending it in WhatsApp, return here and confirm it was sent to move this prospect into your pipeline.</div> : conversation.map(m =>
           <div key={m.id} className={"thread-message " + (m.direction === "OUTBOUND" ? "outbound" : "inbound")}>
-            <div className="thread-message-head"><span>{m.direction === "OUTBOUND" ? "DFQLABS" : "PROSPECT"} · {m.type.replaceAll("_"," ")}</span><span>{m.status === "SENT" ? "SENT" : m.direction === "INBOUND" ? "RECEIVED" : "DRAFT · NOT SENT"} · {new Date(m.sentAt || m.createdAt).toLocaleString()}</span></div>
+            <div className="thread-message-head"><span>{m.direction === "OUTBOUND" ? "DFQLABS" : "PROSPECT"} · {m.type.replaceAll("_"," ")}</span><span>{m.direction === "INBOUND" ? "RECEIVED" : m.status === "SENT" ? "SENT" : "DRAFT · NOT SENT"} · {new Date(m.sentAt || m.createdAt).toLocaleString()}</span></div>
             <p>{m.finalSentContent || m.humanEditedContent || m.aiGeneratedContent}</p>
           </div>
         )}

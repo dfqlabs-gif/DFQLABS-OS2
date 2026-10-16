@@ -51,3 +51,19 @@ describe("prospects endpoints", () => {
     expect(res.body.total).toBeGreaterThanOrEqual(1);
   });
 });
+
+
+describe("specialist daily focus", () => {
+  it("returns daily target metrics and an actionable queue", async () => {
+    const app = createApp();
+    const login = await request(app).post("/api/v1/auth/login").send({ email: "specialist@dfqlabs.com", password: "password123" });
+    expect(login.status).toBe(200);
+    const res = await request(app).get("/api/v1/focus/today").set("Authorization", `Bearer ${login.body.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.metrics).toMatchObject({
+      target: expect.any(Number), firstTouchesToday: expect.any(Number), followUpsSentToday: expect.any(Number),
+      queuedFirstTouches: expect.any(Number), dueFollowUps: expect.any(Number), unrepliedInbound: expect.any(Number), remainingFirstTouches: expect.any(Number)
+    });
+    expect(Array.isArray(res.body.focusItems)).toBe(true);
+  });
+});
