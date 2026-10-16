@@ -185,11 +185,11 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
     </section>
 
     <section className="dossier-card">
-      <div className="section-head"><div><div className="eyebrow">CONVERSATION</div><h2>One unified message thread</h2></div>{lead.pipelineStage !== "UNCONTACTED" && <button className="btn-secondary" onClick={() => generate("followup")}>Generate Follow-up</button>}</div>
+      <div className="section-head"><div><div className="eyebrow">TEXT EXCHANGE · SAVED HISTORY</div><h2>Messages back and forth</h2><p style={{ color: "var(--text-muted)", fontSize: 12, margin: "5px 0 0" }}>Sent DMs and replies pasted from WhatsApp are kept together here. Drafts are marked until you confirm they were sent.</p></div>{lead.pipelineStage !== "UNCONTACTED" && <button className="btn-secondary" onClick={() => generate("followup")}>Generate Follow-up</button>}</div>
       <div className="thread">
         {conversation.length === 0 ? <div className="empty-state">No messages yet. Generate the first-touch WhatsApp message to begin. After sending it in WhatsApp, return here and confirm it was sent to move this prospect into your pipeline.</div> : conversation.map(m =>
           <div key={m.id} className={"thread-message " + (m.direction === "OUTBOUND" ? "outbound" : "inbound")}>
-            <div className="thread-message-head"><span>{m.direction === "OUTBOUND" ? "DFQLABS" : "PROSPECT"} · {m.type.replaceAll("_"," ")}</span><span>{new Date(m.sentAt || m.createdAt).toLocaleString()}</span></div>
+            <div className="thread-message-head"><span>{m.direction === "OUTBOUND" ? "DFQLABS" : "PROSPECT"} · {m.type.replaceAll("_"," ")}</span><span>{m.status === "SENT" ? "SENT" : m.direction === "INBOUND" ? "RECEIVED" : "DRAFT · NOT SENT"} · {new Date(m.sentAt || m.createdAt).toLocaleString()}</span></div>
             <p>{m.finalSentContent || m.humanEditedContent || m.aiGeneratedContent}</p>
           </div>
         )}

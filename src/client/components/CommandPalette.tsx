@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext.js";
 import { BrainCircuit, LayoutDashboard, MessageCircle, Search, Target, Users, Workflow, Plus, TrendingUp } from "lucide-react";
 
 interface CommandPaletteProps {
@@ -10,6 +11,7 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onNavigate }) => {
   const [query, setQuery] = useState("");
+  const { activeRole } = useAuth();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -29,18 +31,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
-  const actions = [
+  const founderActions = [
     { label: "CEO Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
     { label: "Lead Finder", path: "/lead-finder", icon: Search },
     { label: "Lead Directory", path: "/prospects", icon: Users },
     { label: "Pipeline", path: "/pipeline", icon: Workflow },
     { label: "Conversations", path: "/conversations", icon: MessageCircle },
-    { label: "Today's Focus", path: "/focus", icon: Target },
+    { label: "Today’s Focus", path: "/focus", icon: Target },
     { label: "Add a Prospect", path: "/prospects/new", icon: Plus },
     { label: "Team & Seats", path: "/admin/team", icon: Users },
     { label: "Learning Intelligence", path: "/admin/intelligence", icon: BrainCircuit },
     { label: "Performance", path: "/performance", icon: TrendingUp }
   ];
+  const specialistActions = [
+    { label: "Today’s Focus", path: "/focus", icon: Target },
+    { label: "My Leads", path: "/prospects", icon: Users },
+    { label: "Lead Finder", path: "/lead-finder", icon: Search },
+    { label: "Conversations", path: "/conversations", icon: MessageCircle },
+    { label: "Add Prospect", path: "/prospects/new", icon: Plus },
+    { label: "My Performance", path: "/performance", icon: TrendingUp }
+  ];
+  const actions = activeRole === "FOUNDER" ? founderActions : specialistActions;
 
   const filtered = actions.filter((a) => a.label.toLowerCase().includes(query.toLowerCase()));
 

@@ -69,7 +69,7 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void; initi
   return (
     <div className="directory-page">
       <section className="page-intro">
-        <div><div className="eyebrow">LEAD DATABASE</div><h1>Lead Directory</h1><p>Every prospect, owner, stage and contact point in one searchable workspace.</p></div>
+        <div><div className="eyebrow">{activeRole === "FOUNDER" ? "LEAD DATABASE" : "YOUR OUTREACH WORKSPACE"}</div><h1>{activeRole === "FOUNDER" ? "Lead Directory" : "My Leads"}</h1><p>{activeRole === "FOUNDER" ? "Every prospect, owner, stage and contact point in one searchable workspace." : "Your assigned contactable prospects, outreach history and next actions. Today’s Focus automatically queues up to 30 new prospects from the shared founder-owned pool."}</p></div>
         <div className="directory-header-actions">
           {activeRole === "FOUNDER" && <>
             <button className="btn-secondary" onClick={exportJson} disabled={exporting || loading}>{exporting ? "Exporting…" : "Export JSON"}</button>
@@ -83,7 +83,7 @@ export const ProspectsPage: React.FC<{ onNavigate: (path: string) => void; initi
         <select className="form-select compact-select" value={stage} onChange={(e) => { setStage(e.target.value); setPage(1); setLeads([]); }}>
           <option value="">All stages</option>{stageOptions.slice(1).map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
         </select>
-        <div className="toolbar-count">{loading ? "Loading…" : `${total} total prospects · showing ${leads.length}`}</div>
+        <div className="toolbar-count">{loading ? "Loading…" : `${total} ${activeRole === "FOUNDER" ? "total prospects" : "assigned leads"} · showing ${leads.length}`}</div>
       </section>
       <div className="table-container directory-table">
         <table>
