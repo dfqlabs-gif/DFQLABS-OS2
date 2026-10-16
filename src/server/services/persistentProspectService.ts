@@ -164,9 +164,16 @@ export class PersistentProspectService {
       const next = await this.list(user, { page, limit: 100 });
       if (next) allLeads.push(...next.leads);
     }
+    const { data: sentRows, error: sentError } = await db.from("messages").select("id,type").eq("sender_user_id", user.id)
+      .eq("direction", "OUTBOUND").eq("status", "SENT").gte("sent_at", dayStart);
+    if (sentError) throw new Error(sentError.message);
+    const sentToday = sentRows || [];
+    const firstTouchesToday = sentToday.filter((message: { type: string }) => message.type === "FIRST_TOUCH").length;
+    const followUpsSentToday = sentToday.filter((message: { type: string }) => message.type === "FOLLOW_UP").length;
+
     const contactable = (lead: Lead) => (lead.contacts || []).some((contact) => ["PHONE", "WHATSAPP"].includes(contact.contactType) && Boolean(contact.normalizedValue));
     const newLeads = allLeads.filter((lead) => lead.status === "ACTIVE" && lead.pipelineStage === "UNCONTACTED" && contactable(lead))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, target);
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, Math.max(0, target - firstTouchesToday));
 
     const focusItems: FocusItem[] = [];
     const inboundLeads = allLeads.filter((lead) => lead.status === "ACTIVE" && lead.pipelineStage === "REPLIED");
@@ -191,13 +198,6 @@ export class PersistentProspectService {
       recommendedAction: "Generate the first-touch DM, personalize it, open WhatsApp, send it, and confirm it was sent.",
       type: "UNCONTACTED_PROSPECT"
     });
-
-    const { data: sentRows, error: sentError } = await db.from("messages").select("id,type").eq("sender_user_id", user.id)
-      .eq("direction", "OUTBOUND").eq("status", "SENT").gte("sent_at", dayStart);
-    if (sentError) throw new Error(sentError.message);
-    const sentToday = sentRows || [];
-    const firstTouchesToday = sentToday.filter((message: { type: string }) => message.type === "FIRST_TOUCH").length;
-    const followUpsSentToday = sentToday.filter((message: { type: string }) => message.type === "FOLLOW_UP").length;
 
     return { focusItems, metrics: {
       target, sentToday: sentToday.length, firstTouchesToday, followUpsSentToday,

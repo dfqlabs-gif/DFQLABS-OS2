@@ -3,7 +3,7 @@ import { LeadService } from "../services/leadService.js";
 import { PersistentProspectService } from "../services/persistentProspectService.js";
 
 export class FocusController {
-  public static getToday(req: Request, res: Response): void {
+  public static async getToday(req: Request, res: Response): Promise<void> {
     if (!req.user) {
       res.status(401).json({ title: "Unauthorized", status: 401 });
       return;
