@@ -158,6 +158,33 @@ export class PersistentProspectService {
       }
     }
 
+    if (user.role === "OUTREACH_SPECIALIST") {
+      const { data: founders, error: foundersError } = await db.from("users").select("id").eq("role", "FOUNDER").eq("is_active", true);
+      if (foundersError) throw new Error(foundersError.message);
+      const founderIds = (founders || []).map((row: { id: string }) => row.id).filter((id: string) => id !== user.id);
+      if (founderIds.length) {
+        const { data: actionable, error: actionableError } = await db.from("leads")
+          .select("id,owner_user_id,pipeline_stage,last_contact_at,next_follow_up_at")
+          .in("owner_user_id", founderIds).eq("status", "ACTIVE")
+          .in("pipeline_stage", ["REPLIED", "CONTACTED", "NURTURE"])
+          .order("updated_at", { ascending: true }).limit(500);
+        if (actionableError) throw new Error(actionableError.message);
+        for (const candidate of actionable || []) {
+          const row = candidate as { id: string; owner_user_id: string; pipeline_stage: string; last_contact_at?: string | null; next_follow_up_at?: string | null };
+          let needsAction = row.pipeline_stage === "REPLIED";
+          if (!needsAction) {
+            const dueAt = row.next_follow_up_at || (row.last_contact_at ? new Date(new Date(row.last_contact_at).getTime() + 3 * 86400000).toISOString() : null);
+            needsAction = Boolean(dueAt && new Date(dueAt).getTime() <= now.getTime());
+          }
+          if (!needsAction) continue;
+          // Only claim if the owner has not changed since discovery.
+          const { error: claimError } = await db.from("leads").update({ owner_user_id: user.id, updated_at: now.toISOString() })
+            .eq("id", row.id).eq("owner_user_id", row.owner_user_id).eq("status", "ACTIVE").select("id").maybeSingle();
+          if (claimError) throw new Error(claimError.message);
+        }
+      }
+    }
+
     const firstPage = await this.list(user, { page: 1, limit: 100 });
     const allLeads: Lead[] = [...(firstPage?.leads || [])];
     for (let page = 2; page <= (firstPage?.totalPages || 1); page++) {
