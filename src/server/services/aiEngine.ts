@@ -10,9 +10,8 @@ async function gemini(prompt: string): Promise<string | null> {
   if (!env.GEMINI_API_KEY) return null;
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 350 } })
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.55, maxOutputTokens: 220 } })
     });
     if (!response.ok) return null;
     const json = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
@@ -31,20 +30,59 @@ export class AIEngineService {
   }
 
   public static async generateFirstTouch(lead: Lead): Promise<FirstTouchDraftResult> {
-    const verifiedFacts = lead.evidence?.filter((e) => e.category === "VERIFIED_FACT").map((e) => e.evidenceText) ?? [];
+    const evidence = lead.evidence ?? [];
+    const verifiedFacts = evidence.filter((e) => e.category === "VERIFIED_FACT").map((e) => e.evidenceText);
+    const observations = evidence.filter((e) => e.category === "REASONABLE_OBSERVATION").map((e) => e.evidenceText);
+    const instagram = lead.socialProfiles?.find((profile) => profile.platform === "INSTAGRAM");
+    const hasInstagramEvidence = Boolean(instagram && evidence.some((item) =>
+      item.sourceType === "INSTAGRAM_BIO" || item.sourceType === "POST_CAPTION" ||
+      (item.sourceUrl && /instagram\.com/i.test(item.sourceUrl))
+    ));
+    const breakdownAlreadyPrepared = [...verifiedFacts, ...observations].some((fact) =>
+      /(?:6[- ]minute|six[- ]minute|breakdown|audit video).{0,70}(?:recorded|prepared|created|ready|completed)|(?:recorded|prepared|created|ready|completed).{0,70}(?:6[- ]minute|six[- ]minute|breakdown|audit video)/i.test(fact)
+    );
+
     const prompt = `${STYLE}
-Generate ONE first-touch WhatsApp DM for:
+Write ONE first-touch WhatsApp message for DFQLABS using this proven outreach structure as the CONTROL:
+"Hi [Company Name],
+
+We noticed a positioning gap on your Instagram page that could be costing you higher-value buyers.
+In fact, we did a quick 6-minute breakdown showing you and how you can fix it—should I send it?"
+
+Personalize only where supplied evidence supports it. Keep the message short and close to this control's structure: (1) specific positioning/content opportunity, (2) potential relevance to higher-value property buyers, (3) offer a short 6-minute breakdown, (4) permission-based question. Do not turn this into a generic introduction or pitch the ₦150,000 audit in the first message.
+
 Company: ${lead.companyName}
 Contact: ${lead.contactName || "not provided"}
 Business type: ${lead.businessType || lead.description || "real estate company"}
-Location: ${lead.location || "not provided"}
-Verified facts only: ${verifiedFacts.join(" | ") || "none"}
-Rules: do not invent a project, achievement, location, follower count or prior interaction. The message must answer four things naturally: who DFQLABS is, why we are reaching out to this company, one or two verified observations/opportunities from the supplied facts, and what we propose as the next step. State that the next step is a free strategic audit worth ₦150,000. Do not use the word "complimentary". Do not say "I noticed your page" unless supported by evidence. Do not use emojis unless genuinely natural. Keep it conversational and WhatsApp-appropriate, normally 80–130 words. End with a simple permission-based question.`;
+Instagram profile: ${instagram?.handleOrUrl || "not recorded"}
+Instagram-specific evidence available: ${hasInstagramEvidence ? "yes" : "no"}
+Verified facts: ${verifiedFacts.join(" | ") || "none"}
+Reasonable observations: ${observations.join(" | ") || "none"}
+Has evidence that a 6-minute breakdown is already prepared: ${breakdownAlreadyPrepared ? "yes" : "no"}
+
+Rules:
+- Address the company/contact naturally; prefer "Hi [Company Name]," unless a real contact name makes a one-to-one greeting more natural.
+- Only say "we noticed a positioning gap on your Instagram page" when Instagram-specific evidence supports a concrete gap. Otherwise use a softer, accurate opportunity statement; if no Instagram profile is recorded, do not claim to have reviewed its Instagram page.
+- Do not claim the breakdown has already been recorded/prepared unless supplied evidence explicitly confirms that. If not confirmed, say "We can put together a quick 6-minute breakdown..." or equivalent.
+- Do not invent a problem, project, achievement, location, buyer loss, prior interaction, or completed research.
+- Do not claim the prospect is losing buyers as a proven fact; frame impact as a possibility.
+- No emojis, no flattery, no generic "I'm reaching out from DFQLABS" opening, no audit pricing in this first message.
+- Aim for 35–65 words. End with a simple permission-based question. Return only the message text.`;
+
     const generated = await gemini(prompt);
-    const fallback = lead.contactName
-      ? `Hi ${lead.contactName}, I’m reaching out from DFQLABS. We help real estate companies improve how their positioning and content turn attention into serious buyer conversations. We’d like to point out a few specific opportunities in your current positioning/content and offer a free strategic audit worth ₦150,000. Would you be open to me sharing the details?`
-      : `Hi, I’m reaching out from DFQLABS. We help real estate companies improve how their positioning and content turn attention into serious buyer conversations. We’d like to point out a few opportunities we see in your current positioning and offer a free strategic audit worth ₦150,000. Would you be open to me sharing what it covers?`;
-    return { draftText: generated || fallback, evidenceUsed: verifiedFacts };
+    const fallback = instagram
+      ? `Hi ${lead.companyName},
+
+We noticed an opportunity to strengthen how your Instagram page attracts higher-value property buyers. We can put together a quick 6-minute breakdown showing what we spotted and how you could address it.
+
+Would you like me to send it?`
+      : `Hi ${lead.companyName},
+
+We help real estate businesses strengthen their positioning to attract higher-value property buyers. We can put together a quick 6-minute breakdown of opportunities relevant to your business and how you could address them.
+
+Would you like me to send it?`;
+
+    return { draftText: generated || fallback, evidenceUsed: [...verifiedFacts, ...observations] };
   }
 
   public static async generateFollowUp(lead: Lead, history: Array<{ direction: string; content: string }>): Promise<FirstTouchDraftResult> {
