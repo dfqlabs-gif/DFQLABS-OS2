@@ -23,10 +23,10 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("winning audit first-touch outreach", () => {
   it("uses the winning short breakdown structure and forbids unsupported claims", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       json: async () => ({ candidates: [{ content: { parts: [{ text: "Hi Example Homes,\n\nWe spotted an opportunity to strengthen your positioning for higher-value buyers. We can prepare a quick 6-minute breakdown. Would you like me to send it?" }] } }] })
-    });
+    } as Response);
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await AIEngineService.generateFirstTouch({
@@ -44,7 +44,7 @@ describe("winning audit first-touch outreach", () => {
   });
 
   it("uses a safe fallback when AI generation is unavailable and does not claim an Instagram review without a profile", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("network unavailable")));
     const result = await AIEngineService.generateFirstTouch(baseLead);
 
     expect(result.draftText).toContain("Hi Example Homes");
