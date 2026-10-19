@@ -30,59 +30,14 @@ export class AIEngineService {
   }
 
   public static async generateFirstTouch(lead: Lead): Promise<FirstTouchDraftResult> {
-    const evidence = lead.evidence ?? [];
-    const verifiedFacts = evidence.filter((e) => e.category === "VERIFIED_FACT").map((e) => e.evidenceText);
-    const observations = evidence.filter((e) => e.category === "REASONABLE_OBSERVATION").map((e) => e.evidenceText);
-    const instagram = lead.socialProfiles?.find((profile) => profile.platform === "INSTAGRAM");
-    const hasInstagramEvidence = Boolean(instagram && evidence.some((item) =>
-      item.sourceType === "INSTAGRAM_BIO" || item.sourceType === "POST_CAPTION" ||
-      (item.sourceUrl && /instagram\.com/i.test(item.sourceUrl))
-    ));
-    const breakdownAlreadyPrepared = [...verifiedFacts, ...observations].some((fact) =>
-      /(?:6[- ]minute|six[- ]minute|breakdown|audit video).{0,70}(?:recorded|prepared|created|ready|completed)|(?:recorded|prepared|created|ready|completed).{0,70}(?:6[- ]minute|six[- ]minute|breakdown|audit video)/i.test(fact)
-    );
-
-    const prompt = `${STYLE}
-Write ONE first-touch WhatsApp message for DFQLABS using this proven outreach structure as the CONTROL:
-"Hi [Company Name],
-
-We noticed a positioning gap on your Instagram page that could be costing you higher-value buyers.
-In fact, we did a quick 6-minute breakdown showing you and how you can fix it—should I send it?"
-
-Personalize only where supplied evidence supports it. Keep the message short and close to this control's structure: (1) specific positioning/content opportunity, (2) potential relevance to higher-value property buyers, (3) offer a short 6-minute breakdown, (4) permission-based question. Do not turn this into a generic introduction or pitch the ₦150,000 audit in the first message.
-
-Company: ${lead.companyName}
-Contact: ${lead.contactName || "not provided"}
-Business type: ${lead.businessType || lead.description || "real estate company"}
-Instagram profile: ${instagram?.handleOrUrl || "not recorded"}
-Instagram-specific evidence available: ${hasInstagramEvidence ? "yes" : "no"}
-Verified facts: ${verifiedFacts.join(" | ") || "none"}
-Reasonable observations: ${observations.join(" | ") || "none"}
-Has evidence that a 6-minute breakdown is already prepared: ${breakdownAlreadyPrepared ? "yes" : "no"}
-
-Rules:
-- Address the company/contact naturally; prefer "Hi [Company Name]," unless a real contact name makes a one-to-one greeting more natural.
-- Only say "we noticed a positioning gap on your Instagram page" when Instagram-specific evidence supports a concrete gap. Otherwise use a softer, accurate opportunity statement; if no Instagram profile is recorded, do not claim to have reviewed its Instagram page.
-- Do not claim the breakdown has already been recorded/prepared unless supplied evidence explicitly confirms that. If not confirmed, say "We can put together a quick 6-minute breakdown..." or equivalent.
-- Do not invent a problem, project, achievement, location, buyer loss, prior interaction, or completed research.
-- Do not claim the prospect is losing buyers as a proven fact; frame impact as a possibility.
-- No emojis, no flattery, no generic "I'm reaching out from DFQLABS" opening, no audit pricing in this first message.
-- Aim for 35–65 words. End with a simple permission-based question. Return only the message text.`;
-
-    const generated = await gemini(prompt);
-    const fallback = instagram
-      ? `Hi ${lead.companyName},
-
-We noticed an opportunity to strengthen how your Instagram page attracts higher-value property buyers. We can put together a quick 6-minute breakdown showing what we spotted and how you could address it.
-
-Would you like me to send it?`
-      : `Hi ${lead.companyName},
-
-We help real estate businesses strengthen their positioning to attract higher-value property buyers. We can put together a quick 6-minute breakdown of opportunities relevant to your business and how you could address them.
-
-Would you like me to send it?`;
-
-    return { draftText: generated || fallback, evidenceUsed: [...verifiedFacts, ...observations] };
+    // This is DFQLABS's proven control message. Do not paraphrase or ask AI to rewrite it.
+    // Only replace the company-name placeholder; preserve all other wording and punctuation exactly.
+    const template = "Hi [Company Name],\n\nI'm writing you because we noticed a huge positioning gap on your IG page that could be costing you higher-value buyers.\nIn fact we did a quick 6 min breakdown showing you and how you can fix it—should I send it?";
+    const draftText = template.replace("[Company Name]", lead.companyName);
+    const evidenceUsed = (lead.evidence ?? [])
+      .filter((item) => item.category === "VERIFIED_FACT" || item.category === "REASONABLE_OBSERVATION")
+      .map((item) => item.evidenceText);
+    return { draftText, evidenceUsed };
   }
 
   public static async generateFollowUp(lead: Lead, history: Array<{ direction: string; content: string }>): Promise<FirstTouchDraftResult> {
