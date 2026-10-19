@@ -80,12 +80,21 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
   const openWhatsApp = async () => {
     if (!message) return;
     try {
-      const blank = window.open("about:blank", "_blank");
+      // Do not open a blank tab or send mobile users to WhatsApp Web.
+      // The WhatsApp custom URI asks Android to hand the chat to the installed app.
       const r = await ApiClient.openWhatsApp(message.id);
-      if (blank) blank.location.href = r.whatsappUrl; else window.location.href = r.whatsappUrl;
-      setMessage(r.message); setMessages(prev => prev.map(m => m.id === r.message.id ? r.message : m)); setOpened(true);
-      addToast("WhatsApp opened — verify the recipient before sending", "info");
-    } catch (e) { addToast((e as Error).message, "error"); }
+      const nativeWhatsAppUrl = r.whatsappUrl.replace(
+        /^https:\/\/api\.whatsapp\.com\/send/i,
+        "whatsapp://send"
+      );
+      window.location.assign(nativeWhatsAppUrl);
+      setMessage(r.message);
+      setMessages(prev => prev.map(m => m.id === r.message.id ? r.message : m));
+      setOpened(true);
+      addToast("Opening the WhatsApp app — verify the recipient and message before sending", "info");
+    } catch (e) {
+      addToast((e as Error).message, "error");
+    }
   };
 
   const confirm = async () => {
