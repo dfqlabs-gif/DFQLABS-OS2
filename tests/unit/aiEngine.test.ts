@@ -1,9 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../../src/server/config/env.js", () => ({
-  env: { GEMINI_API_KEY: "test-key", GEMINI_MODEL: "test-model" }
-}));
-
+import { describe, expect, it, vi } from "vitest";
 import { AIEngineService } from "../../src/server/services/aiEngine.js";
 import type { Lead } from "../../src/shared/types/index.js";
 
@@ -19,36 +14,30 @@ const baseLead: Lead = {
   updatedAt: "2026-10-01T00:00:00.000Z"
 };
 
-afterEach(() => vi.unstubAllGlobals());
-
-describe("winning audit first-touch outreach", () => {
-  it("uses the winning short breakdown structure and forbids unsupported claims", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
-      json: async () => ({ candidates: [{ content: { parts: [{ text: "Hi Example Homes,\n\nWe spotted an opportunity to strengthen your positioning for higher-value buyers. We can prepare a quick 6-minute breakdown. Would you like me to send it?" }] } }] })
-    } as Response);
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await AIEngineService.generateFirstTouch({
-      ...baseLead,
-      socialProfiles: [{ id: "social-1", leadId: baseLead.id, platform: "INSTAGRAM", handleOrUrl: "https://instagram.com/examplehomes", normalizedIdentifier: "examplehomes", createdAt: baseLead.createdAt }],
-      evidence: [{ id: "evidence-1", leadId: baseLead.id, sourceType: "INSTAGRAM_BIO", evidenceText: "Residential property developer", category: "VERIFIED_FACT", createdAt: baseLead.createdAt }]
-    });
-
-    const prompt = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).contents[0].parts[0].text as string;
-    expect(prompt).toContain("proven outreach structure as the CONTROL");
-    expect(prompt).toContain("Do not claim the breakdown has already been recorded/prepared");
-    expect(prompt).toContain("Do not turn this into a generic introduction");
-    expect(result.draftText).toContain("6-minute breakdown");
-    expect(result.evidenceUsed).toContain("Residential property developer");
-  });
-
-  it("uses a safe fallback when AI generation is unavailable and does not claim an Instagram review without a profile", async () => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("network unavailable")));
+describe("exact winning first-touch outreach", () => {
+  it("preserves the user's wording, punctuation, and line breaks while substituting only the company name", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await AIEngineService.generateFirstTouch(baseLead);
 
-    expect(result.draftText).toContain("Hi Example Homes");
-    expect(result.draftText).toContain("We can put together a quick 6-minute breakdown");
-    expect(result.draftText).not.toContain("your Instagram page");
+    expect(result.draftText).toBe(
+      "Hi Example Homes,\n\n" +
+      "I'm writing you because we noticed a huge positioning gap on your IG page that could be costing you higher-value buyers.\n" +
+      "In fact we did a quick 6 min breakdown showing you and how you can fix it—should I send it?"
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("does not paraphrase the message for different companies", async () => {
+    const result = await AIEngineService.generateFirstTouch({
+      ...baseLead,
+      companyName: "Aceas Luxury Homes"
+    });
+
+    expect(result.draftText).toBe(
+      "Hi Aceas Luxury Homes,\n\n" +
+      "I'm writing you because we noticed a huge positioning gap on your IG page that could be costing you higher-value buyers.\n" +
+      "In fact we did a quick 6 min breakdown showing you and how you can fix it—should I send it?"
+    );
   });
 });
