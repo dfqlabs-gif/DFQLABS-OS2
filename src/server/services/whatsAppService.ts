@@ -17,33 +17,29 @@ export interface WhatsAppContactInfo {
 }
 
 export class WhatsAppService {
+  /**
+   * Use WhatsApp's app URI scheme rather than api.whatsapp.com/wa.me.
+   * On Android this asks the OS to hand the chat to the installed WhatsApp app.
+   */
   public static buildTargetUrl(phoneNormalized: string, messageText: string): string {
-    const cleanPhone = phoneNormalized.replace(/\+/g, "").replace(/\s/g, "");
+    const cleanPhone = phoneNormalized.replace(/\+/g, "").replace(/\D/g, "");
     const encodedText = encodeURIComponent(messageText);
-    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+    return `whatsapp://send?phone=${cleanPhone}&text=${encodedText}`;
   }
 
   public static getContactInfo(rawPhone?: string, messageText = ""): WhatsAppContactInfo {
     const validation = validateNigerianMobilePhone(rawPhone);
-
     const disclaimer = "Link availability indicates structural phone format validity only and does not verify active WhatsApp registration.";
 
     if (!validation.isValid || !validation.normalized) {
-      return {
-        phoneRaw: rawPhone || "",
-        status: "INVALID_NUMBER",
-        isConfirmed: false,
-        disclaimer
-      };
+      return { phoneRaw: rawPhone || "", status: "INVALID_NUMBER", isConfirmed: false, disclaimer };
     }
-
-    const clickToChatUrl = this.buildTargetUrl(validation.normalized, messageText);
 
     return {
       phoneRaw: validation.raw,
       phoneNormalized: validation.normalized,
       status: "LINK_AVAILABLE",
-      clickToChatUrl,
+      clickToChatUrl: this.buildTargetUrl(validation.normalized, messageText),
       isConfirmed: false,
       disclaimer
     };
