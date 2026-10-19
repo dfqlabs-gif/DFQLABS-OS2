@@ -4,7 +4,7 @@ import { WhatsAppService } from "../../src/server/services/whatsAppService.js";
 describe("WhatsAppService", () => {
   it("builds correct target URL for normalized phone number", () => {
     const url = WhatsAppService.buildTargetUrl("+2348012345678", "Hello DFQLABS");
-    expect(url).toBe("https://api.whatsapp.com/send?phone=2348012345678&text=Hello%20DFQLABS");
+    expect(url).toBe("whatsapp://send?phone=2348012345678&text=Hello%20DFQLABS");
   });
 
   it("returns LINK_AVAILABLE for valid Nigerian mobile number", () => {
