@@ -83,7 +83,7 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
     // Open the installed WhatsApp app directly from the user's tap. Do not create a
     // blank tab and do not send mobile users through WhatsApp Web.
     const rawPhone = form.whatsapp || form.phone;
-    const digits = (rawPhone || "").replace(/\\D/g, "");
+    const digits = (rawPhone || "").replace(/\D/g, "");
     const internationalPhone = digits.startsWith("234")
       ? digits
       : digits.startsWith("0")
