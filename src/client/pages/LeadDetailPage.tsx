@@ -77,15 +77,38 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
     } catch (e) { addToast((e as Error).message, "error"); }
   };
 
-  const openWhatsApp = async () => {
+  const openWhatsApp = () => {
     if (!message) return;
-    try {
-      const blank = window.open("about:blank", "_blank");
-      const r = await ApiClient.openWhatsApp(message.id);
-      if (blank) blank.location.href = r.whatsappUrl; else window.location.href = r.whatsappUrl;
-      setMessage(r.message); setMessages(prev => prev.map(m => m.id === r.message.id ? r.message : m)); setOpened(true);
-      addToast("WhatsApp opened — verify the recipient before sending", "info");
-    } catch (e) { addToast((e as Error).message, "error"); }
+
+    const rawPhone = (form.whatsapp || form.phone || "").trim();
+    const digits = rawPhone.replace(/\\D/g, "");
+    const phone = digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
+    if (phone.length < 8) {
+      addToast("Add a valid phone or WhatsApp number to this prospect before opening WhatsApp.", "error");
+      return;
+    }
+
+    // Launch the installed WhatsApp app directly. Do not open a blank tab or WhatsApp Web.
+    const nativeUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(draft)}`;
+    setOpened(true);
+    setMessage((current) => current ? { ...current, status: "WHATSAPP_OPENED", humanEditedContent: draft } : current);
+    addToast("Opening the WhatsApp app…", "info");
+
+    // Start persistence immediately, but do not await it before navigating: waiting can
+    // cause mobile browsers to lose the user gesture required to launch the native app.
+    const persistOpen = (async () => {
+      try {
+        await ApiClient.updateMessageDraft(message.id, draft);
+        const r = await ApiClient.openWhatsApp(message.id);
+        setMessage(r.message);
+        setMessages((prev) => prev.map((item) => item.id === r.message.id ? r.message : item));
+      } catch (e) {
+        addToast(`WhatsApp launch was attempted, but OS2 could not save the message status: ${(e as Error).message}`, "error");
+      }
+    })();
+
+    window.location.href = nativeUrl;
+    void persistOpen;
   };
 
   const confirm = async () => {
