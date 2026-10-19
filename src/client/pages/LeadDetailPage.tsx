@@ -77,24 +77,40 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
     } catch (e) { addToast((e as Error).message, "error"); }
   };
 
-  const openWhatsApp = async () => {
+  const openWhatsApp = () => {
     if (!message) return;
-    try {
-      // Do not open a blank tab or send mobile users to WhatsApp Web.
-      // The WhatsApp custom URI asks Android to hand the chat to the installed app.
-      const r = await ApiClient.openWhatsApp(message.id);
-      const nativeWhatsAppUrl = r.whatsappUrl.replace(
-        /^https:\/\/api\.whatsapp\.com\/send/i,
-        "whatsapp://send"
-      );
-      window.location.assign(nativeWhatsAppUrl);
+
+    // Open the installed WhatsApp app directly from the user's tap. Do not create a
+    // blank tab and do not send mobile users through WhatsApp Web.
+    const rawPhone = form.whatsapp || form.phone;
+    const digits = (rawPhone || "").replace(/\\D/g, "");
+    const internationalPhone = digits.startsWith("234")
+      ? digits
+      : digits.startsWith("0")
+        ? `234${digits.slice(1)}`
+        : digits.length === 10
+          ? `234${digits}`
+          : digits;
+
+    if (!internationalPhone || internationalPhone.length < 10) {
+      addToast("Add a valid phone or WhatsApp number to this prospect first.", "error");
+      return;
+    }
+
+    const nativeUrl = `whatsapp://send?phone=${internationalPhone}&text=${encodeURIComponent(draft)}`;
+    // Kick off persistence and immediately hand control to Android's WhatsApp URI
+    // handler in the same click event, before browser user activation expires.
+    const pendingOpen = ApiClient.openWhatsApp(message.id);
+    setOpened(true);
+    window.location.href = nativeUrl;
+
+    pendingOpen.then((r) => {
       setMessage(r.message);
       setMessages(prev => prev.map(m => m.id === r.message.id ? r.message : m));
-      setOpened(true);
-      addToast("Opening the WhatsApp app — verify the recipient and message before sending", "info");
-    } catch (e) {
+      addToast("WhatsApp app opened — verify the recipient and message before sending", "info");
+    }).catch((e) => {
       addToast((e as Error).message, "error");
-    }
+    });
   };
 
   const confirm = async () => {
