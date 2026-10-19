@@ -81,7 +81,7 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
     if (!message) return;
 
     const rawPhone = (form.whatsapp || form.phone || "").trim();
-    const digits = rawPhone.replace(/\\D/g, "");
+    const digits = rawPhone.replace(/\D/g, "");
     const phone = digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
     if (phone.length < 8) {
       addToast("Add a valid phone or WhatsApp number to this prospect before opening WhatsApp.", "error");
@@ -225,7 +225,7 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
       <div className="eyebrow">{message.type === "FOLLOW_UP" ? "FOLLOW-UP DRAFT" : "FIRST-TOUCH DRAFT"}</div>
       <textarea className="form-textarea" rows={8} value={draft} disabled={message.status === "SENT"} onChange={e => setDraft(e.target.value)} />
       <div className="dossier-edit-actions">
-        {message.status !== "SENT" && <><button className="btn-secondary" onClick={saveDraft}>Save Edit</button><button className="btn-primary" onClick={openWhatsApp}>📲 Open WhatsApp</button></>}
+        {message.status !== "SENT" && <><button className="btn-secondary" onClick={saveDraft}>Save Edit</button><button className="btn-primary" onClick={openWhatsApp}>📲 Open WhatsApp App</button></>}
         {(opened || message.status === "WHATSAPP_OPENED") && message.status !== "SENT" && <button className="btn-primary" onClick={confirm}>✓ Confirm Message Sent</button>}
       </div>
     </section>}
