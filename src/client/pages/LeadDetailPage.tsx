@@ -38,13 +38,26 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
     try {
       const r = await ApiClient.getProspectDetail(leadId);
       setLead(r.lead); setMessages(r.messages);
+      // API responses use camelCase LeadContact objects. Be tolerant of legacy snake_case
+      // payloads too, so older records/deployments do not make saved numbers appear missing.
+      const contacts = (r.contacts || r.lead.contacts || []) as Array<Record<string, any>>;
+      const readContactType = (c: Record<string, any>) => c.contactType ?? c.contact_type;
+      const readContactValue = (c: Record<string, any>) => c.normalizedValue ?? c.normalized_value ?? c.rawValue ?? c.raw_value ?? "";
+      const contactValue = (type: string) => {
+        const matches = contacts.filter(c => readContactType(c) === type);
+        const preferred = matches.find(c => c.isPrimary ?? c.is_primary) || matches[0];
+        return preferred ? String(readContactValue(preferred)).trim() : "";
+      };
+      const socialProfiles = (r.socialProfiles || r.lead.socialProfiles || []) as Array<Record<string, any>>;
+      const readPlatform = (c: Record<string, any>) => c.platform;
+      const readSocialUrl = (c: Record<string, any>) => c.handleOrUrl ?? c.handle_or_url ?? "";
       setForm({
         companyName: r.lead.companyName || "", contactName: r.lead.contactName || "", titleRole: r.lead.titleRole || "",
-        businessType: r.lead.businessType || "", location: r.lead.location || "", phone: r.contacts.find((c: any) => c.contactType === "PHONE")?.normalizedValue || "",
-        whatsapp: r.contacts.find((c: any) => c.contactType === "WHATSAPP")?.normalizedValue || "",
-        email: r.contacts.find((c: any) => c.contactType === "EMAIL")?.normalizedValue || "",
-        instagram: r.socialProfiles.find((c: any) => c.platform === "INSTAGRAM")?.handleOrUrl || "",
-        website: r.socialProfiles.find((c: any) => c.platform === "WEBSITE")?.handleOrUrl || "",
+        businessType: r.lead.businessType || "", location: r.lead.location || "", phone: contactValue("PHONE"),
+        whatsapp: contactValue("WHATSAPP"),
+        email: contactValue("EMAIL"),
+        instagram: socialProfiles.find(c => readPlatform(c) === "INSTAGRAM") ? String(readSocialUrl(socialProfiles.find(c => readPlatform(c) === "INSTAGRAM")!)) : "",
+        website: socialProfiles.find(c => readPlatform(c) === "WEBSITE") ? String(readSocialUrl(socialProfiles.find(c => readPlatform(c) === "WEBSITE")!)) : "",
         description: r.lead.description || ""
       });
       const latest = r.messages[r.messages.length - 1];
@@ -80,11 +93,17 @@ export const LeadDetailPage: React.FC<{ leadId: string; onNavigate: (path: strin
   const openWhatsApp = () => {
     if (!message) return;
 
-    const rawPhone = (form.whatsapp || form.phone || "").trim();
+    const contacts = lead?.contacts || [];
+    const savedWhatsApp = contacts.find(c => c.contactType === "WHATSAPP")?.normalizedValue
+      || contacts.find(c => c.contactType === "PHONE")?.normalizedValue
+      || "";
+    const rawPhone = [form.whatsapp, form.phone, savedWhatsApp].find(value => Boolean(value?.trim()))?.trim() || "";
     const digits = rawPhone.replace(/\D/g, "");
-    const phone = digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
-    if (phone.length < 8) {
-      addToast("Add a valid phone or WhatsApp number to this prospect before opening WhatsApp.", "error");
+    let phone = digits;
+    if (digits.startsWith("0")) phone = `234${digits.slice(1)}`;
+    else if (digits.length === 10) phone = `234${digits}`;
+    if (phone.length < 10) {
+      addToast("This prospect's saved contact number could not be read. Open Edit Profile, confirm the WhatsApp/phone field, and save it.", "error");
       return;
     }
 
