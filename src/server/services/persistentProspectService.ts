@@ -277,10 +277,24 @@ export class PersistentProspectService {
       messages = ((data || []) as MessageRow[]).map(mapMessage);
     }
     const leadRow = row as LeadRow;
+    const mappedContacts: LeadContact[] = contactRows.map((x) => ({
+      id: x.id, leadId: x.lead_id, contactType: x.contact_type, rawValue: x.raw_value,
+      normalizedValue: x.normalized_value, isPrimary: x.is_primary, createdAt: x.created_at
+    }));
+    const mappedSocialProfiles: LeadSocialProfile[] = socialRows.map((x) => ({
+      id: x.id, leadId: x.lead_id, platform: x.platform, handleOrUrl: x.handle_or_url,
+      normalizedIdentifier: x.normalized_identifier, createdAt: x.created_at
+    }));
+    const mappedEvidence = evidenceRows.map(mapEvidence);
     return {
-      lead: mapLead(leadRow, contactRows.map((x) => ({id:x.id,leadId:x.lead_id,contactType:x.contact_type,rawValue:x.raw_value,normalizedValue:x.normalized_value,isPrimary:x.is_primary,createdAt:x.created_at})),
-        socialRows.map((x) => ({id:x.id,leadId:x.lead_id,platform:x.platform,handleOrUrl:x.handle_or_url,normalizedIdentifier:x.normalized_identifier,createdAt:x.created_at})), evidenceRows.map(mapEvidence)),
-      contacts: contactRows, socialProfiles: socialRows, evidence: evidenceRows, conversation, messages
+      // Keep one consistent camelCase API contract for both top-level collections and lead.*
+      // The prospect dossier reads these top-level collections to populate its contact form.
+      lead: mapLead(leadRow, mappedContacts, mappedSocialProfiles, mappedEvidence),
+      contacts: mappedContacts,
+      socialProfiles: mappedSocialProfiles,
+      evidence: mappedEvidence,
+      conversation,
+      messages
     };
   }
 
