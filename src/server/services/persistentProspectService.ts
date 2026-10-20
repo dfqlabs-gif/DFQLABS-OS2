@@ -1,6 +1,7 @@
 import { FocusItem, Lead, LeadContact, LeadSocialProfile, LeadEvidence, Message, TodayFocusMetrics, User } from "../../shared/types/index.js";
 import { getSupabaseClient } from "../config/supabase.js";
 import { normalizePhone } from "../utils/phoneNormalizer.js";
+import { mapLeadContactRow } from "../utils/contactMapper.js";
 import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
 import { AIEngineService } from "./aiEngine.js";
 import { WhatsAppService } from "./whatsAppService.js";
@@ -277,10 +278,7 @@ export class PersistentProspectService {
       messages = ((data || []) as MessageRow[]).map(mapMessage);
     }
     const leadRow = row as LeadRow;
-    const mappedContacts: LeadContact[] = contactRows.map((x) => ({
-      id: x.id, leadId: x.lead_id, contactType: x.contact_type, rawValue: x.raw_value,
-      normalizedValue: x.normalized_value, isPrimary: x.is_primary, createdAt: x.created_at
-    }));
+    const mappedContacts: LeadContact[] = contactRows.map(mapLeadContactRow);
     const mappedSocialProfiles: LeadSocialProfile[] = socialRows.map((x) => ({
       id: x.id, leadId: x.lead_id, platform: x.platform, handleOrUrl: x.handle_or_url,
       normalizedIdentifier: x.normalized_identifier, createdAt: x.created_at
