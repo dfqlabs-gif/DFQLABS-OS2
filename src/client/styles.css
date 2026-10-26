@@ -942,3 +942,25 @@ button { -webkit-tap-highlight-color:transparent; }
 
 .candidate-approve-button { display: block; margin-top: 10px; padding: 7px 10px; white-space: nowrap; font-size: 11px; }
 .review-table td .candidate-approve-button:disabled { opacity: .55; cursor: wait; }
+
+/* Mobile header repair: keep identity, seat, quick search and logout within viewport. */
+.header { min-width: 0; gap: 12px; }
+.header-left { min-width: 0; flex: 1 1 auto; }
+.page-title { min-width: 0; overflow-wrap: anywhere; }
+.user-profile { min-width: 0; flex: 0 1 auto; gap: 10px; }
+@media (max-width: 760px) {
+  .header { height: auto; min-height: 64px; padding: 12px 14px !important; align-items: flex-start; flex-direction: column; gap: 12px; }
+  .header-left { width: 100%; flex-wrap: wrap; gap: 10px; }
+  .page-title { font-size: clamp(15px, 4.2vw, 19px) !important; line-height: 1.25; flex: 1 1 100%; }
+  .command-trigger-btn { max-width: 100%; min-width: 0; }
+  .user-profile { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+  .user-profile > div { text-align: left !important; min-width: 0; overflow-wrap: anywhere; }
+  .user-profile .role-badge { margin-left: auto; }
+  .user-profile button { margin-left: 0 !important; flex: 0 0 auto; }
+  .main-content, .page-body, .app-container { min-width: 0; }
+}
+@media (max-width: 380px) {
+  .user-profile > span:first-child { max-width: 46%; overflow-wrap: anywhere; }
+  .user-profile > div { flex: 1 1 55%; }
+  .user-profile button span { display: none; }
+}
