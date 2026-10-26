@@ -238,7 +238,7 @@ export class PersistentProspectService {
         .select("id").eq("role", "OUTREACH_SPECIALIST").eq("is_active", true);
       if (activeError) throw new Error(activeError.message);
       const otherIds = (activeRows || []).map((row: {id:string}) => row.id).filter((id: string) => id !== user.id);
-      if (otherIds.length) q = q.not("owner_user_id", "in", "(" + otherIds.join(",") + ")");
+      if (otherIds.length) q = q.or("owner_user_id.is.null,owner_user_id.not.in.(" + otherIds.join(",") + ")");
     }
     if (query.stage) q = q.eq("pipeline_stage", query.stage);
     if (query.search) q = q.or(`company_name.ilike.%${query.search}%,contact_name.ilike.%${query.search}%,location.ilike.%${query.search}%`);
