@@ -231,7 +231,15 @@ export class PersistentProspectService {
   static async list(user: User, query: { search?: string; stage?: string; page?: number; limit?: number }) {
     const db = getSupabaseClient(); if (!db) return null;
     let q = db.from("leads").select("*", { count: "exact" });
-    if (user.role !== "FOUNDER") q = q.eq("owner_user_id", user.id);
+    if (user.role !== "FOUNDER") {
+      // Specialists can work their own leads plus the shared pool. Do not expose
+      // leads currently owned by another active specialist.
+      const { data: activeRows, error: activeError } = await db.from("users")
+        .select("id").eq("role", "OUTREACH_SPECIALIST").eq("is_active", true);
+      if (activeError) throw new Error(activeError.message);
+      const otherIds = (activeRows || []).map((row: {id:string}) => row.id).filter((id: string) => id !== user.id);
+      if (otherIds.length) q = q.or("owner_user_id.is.null,owner_user_id.not.in.(" + otherIds.join(",") + ")");
+    }
     if (query.stage) q = q.eq("pipeline_stage", query.stage);
     if (query.search) q = q.or(`company_name.ilike.%${query.search}%,contact_name.ilike.%${query.search}%,location.ilike.%${query.search}%`);
     const page = Math.max(1, query.page || 1), limit = Math.min(100, Math.max(1, query.limit || 25));
@@ -260,7 +268,13 @@ export class PersistentProspectService {
   static async getById(id: string, user: User) {
     const db = getSupabaseClient(); if (!db) return null;
     let q = db.from("leads").select("*").eq("id", id);
-    if (user.role !== "FOUNDER") q = q.eq("owner_user_id", user.id);
+    if (user.role !== "FOUNDER") {
+      const { data: activeRows, error: activeError } = await db.from("users")
+        .select("id").eq("role", "OUTREACH_SPECIALIST").eq("is_active", true);
+      if (activeError) throw new Error(activeError.message);
+      const otherIds = (activeRows || []).map((item: {id:string}) => item.id).filter((ownerId: string) => ownerId !== user.id);
+      if (otherIds.length) q = q.not("owner_user_id", "in", "(" + otherIds.join(",") + ")");
+    }
     const { data: row, error } = await q.single();
     if (error || !row) return null;
     const [{data:contacts},{data:socialProfiles},{data:evidence},{data:conversation}] = await Promise.all([
@@ -473,7 +487,10 @@ export class PersistentProspectService {
     if (!db) throw new Error("Database is not configured");
     const { data: msg, error } = await db.from("messages").select("*").eq("id", id).single();
     if (error || !msg) throw new Error("Message not found");
-    const { error: e } = await db.from("messages").update({ human_edited_content: editedContent, status: "EDITED" }).eq("id", id);
+    // Saving an edit must not erase the durable WhatsApp handoff state. Otherwise
+    // the sent-confirmation endpoint rejects a message already opened in WhatsApp.
+    const nextStatus = msg.status === "WHATSAPP_OPENED" ? "WHATSAPP_OPENED" : "EDITED";
+    const { error: e } = await db.from("messages").update({ human_edited_content: editedContent, status: nextStatus }).eq("id", id);
     if (e) throw new Error(e.message);
     await db.from("message_edits").insert({ message_id: id, user_id: user.id, original_ai_content: msg.ai_generated_content || "", edited_content: editedContent, edit_distance: Math.abs((msg.ai_generated_content || "").length - editedContent.length) });
     EventService.logEvent({ eventType: "MESSAGE_EDITED", actorUserId: user.id, payload: { messageId: id } });
