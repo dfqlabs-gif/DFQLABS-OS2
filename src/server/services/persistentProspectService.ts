@@ -130,6 +130,9 @@ export class PersistentProspectService {
     const dayStart = new Date(midnight).toISOString();
     const dayEnd = new Date(midnight + 86400000).toISOString();
     let dailyTarget = target;
+    const { data: openIssueRows, error: issueError } = await db.from("lead_contact_issues").select("lead_id").eq("status","OPEN");
+    if(issueError) throw new Error(issueError.message);
+    const blockedLeadIds = new Set((openIssueRows||[]).map((x:{lead_id:string})=>x.lead_id));
 
     if (user.role === "OUTREACH_SPECIALIST") {
       const { data: seat, error: seatError } = await db.from("outreach_seats").select("daily_outreach_target").eq("id", "10000000-0000-0000-0000-000000000001").maybeSingle();
@@ -141,9 +144,7 @@ export class PersistentProspectService {
       if (usersError) throw new Error(usersError.message);
       const activeSpecialists = new Set((users || []).filter((x: {role:string;is_active:boolean}) => x.role === "OUTREACH_SPECIALIST" && x.is_active).map((x: {id:string}) => x.id));
 
-      const { data: openIssueRows, error: issueError } = await db.from("lead_contact_issues").select("lead_id").eq("status","OPEN");
-      if(issueError) throw new Error(issueError.message);
-      const blockedLeadIds = new Set((openIssueRows||[]).map((x:{lead_id:string})=>x.lead_id));
+
       const { data: todayRows, error: todayError } = await db.from("messages").select("id,type")
         .eq("sender_user_id", user.id).eq("direction", "OUTBOUND").eq("status", "SENT").gte("sent_at", dayStart).lt("sent_at", dayEnd);
       if (todayError) throw new Error(todayError.message);
