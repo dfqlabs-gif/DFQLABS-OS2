@@ -200,6 +200,11 @@ export class ApiClient {
     });
   }
 
+
+  public static logManualOutbound(leadId:string,content:string,sentAt?:string):Promise<{message:Message}>{return this.request(`/api/v1/messages/leads/${leadId}/manual-outbound`,{method:"POST",body:JSON.stringify({content,sentAt})});}
+  public static reportContactIssue(leadId:string,issueType:"NO_PHONE"|"NOT_ON_WHATSAPP",notes?:string):Promise<{issue:Record<string,unknown>}>{return this.request(`/api/v1/messages/leads/${leadId}/contact-issues`,{method:"POST",body:JSON.stringify({issueType,notes})});}
+  public static getContactIssues():Promise<{issues:Array<Record<string,any>>}>{return this.request("/api/v1/messages/contact-issues");}
+  public static resolveContactIssue(id:string,resolutionNotes?:string):Promise<{issue:Record<string,unknown>}>{return this.request(`/api/v1/messages/contact-issues/${id}/resolve`,{method:"POST",body:JSON.stringify({resolutionNotes})});}
   public static getTodayFocus(): Promise<{ focusItems: FocusItem[]; metrics: TodayFocusMetrics }> {
     return this.request("/api/v1/focus/today");
   }
