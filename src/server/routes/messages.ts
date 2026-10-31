@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ConfirmSentSchema, GenerateFirstTouchSchema, GenerateFollowUpSchema, InboundReplySchema, SaveDraftEditSchema } from "../../shared/schemas/index.js";
+import { ConfirmSentSchema, GenerateFirstTouchSchema, GenerateFollowUpSchema, InboundReplySchema, ManualOutboundSchema, ContactIssueSchema, ResolveContactIssueSchema, SaveDraftEditSchema } from "../../shared/schemas/index.js";
 import { MessageController } from "../controllers/messageController.js";
 import { authenticateUser } from "../middleware/auth.js";
 import { validateRequest } from "../middleware/validate.js";
@@ -14,5 +14,9 @@ router.put("/:id", validateRequest(SaveDraftEditSchema), MessageController.updat
 router.post("/:id/whatsapp-open", MessageController.whatsappOpen);
 router.post("/:id/confirm-sent", validateRequest(ConfirmSentSchema), MessageController.confirmSent);
 router.post("/conversations/:id/inbound", validateRequest(InboundReplySchema), MessageController.logInboundReply);
+router.post("/leads/:leadId/manual-outbound",validateRequest(ManualOutboundSchema),MessageController.logManualOutbound);
+router.post("/leads/:leadId/contact-issues",validateRequest(ContactIssueSchema),MessageController.reportContactIssue);
+router.get("/contact-issues",MessageController.listContactIssues);
+router.post("/contact-issues/:id/resolve",validateRequest(ResolveContactIssueSchema),MessageController.resolveContactIssue);
 
 export default router;

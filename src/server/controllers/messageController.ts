@@ -72,6 +72,11 @@ export class MessageController {
     } catch (error) { res.status(404).json({ title: "Unable to generate follow-up", status: 404, detail: error instanceof Error ? error.message : "Lead not found" }); }
   }
 
+  public static async logManualOutbound(req:Request,res:Response):Promise<void>{if(!req.user){res.status(401).json({title:"Unauthorized",status:401});return;}try{const message=await PersistentProspectService.logManualOutbound(req.params.leadId,req.body.content,req.body.sentAt,req.user);res.status(201).json({message});}catch(e){res.status(400).json({title:"Unable to log outbound",status:400,detail:e instanceof Error?e.message:"Unable to log"});}}
+  public static async reportContactIssue(req:Request,res:Response):Promise<void>{if(!req.user){res.status(401).json({title:"Unauthorized",status:401});return;}try{const issue=await PersistentProspectService.reportContactIssue(req.params.leadId,req.body.issueType,req.body.notes,req.user);res.status(201).json({issue});}catch(e){res.status(400).json({title:"Unable to report issue",status:400,detail:e instanceof Error?e.message:"Unable to report"});}}
+  public static async listContactIssues(req:Request,res:Response):Promise<void>{if(!req.user){res.status(401).json({title:"Unauthorized",status:401});return;}try{res.status(200).json({issues:await PersistentProspectService.listContactIssues(req.user)});}catch(e){res.status(500).json({title:"Unable to load issues",status:500,detail:e instanceof Error?e.message:"Unable to load"});}}
+  public static async resolveContactIssue(req:Request,res:Response):Promise<void>{if(!req.user){res.status(401).json({title:"Unauthorized",status:401});return;}try{const issue=await PersistentProspectService.resolveContactIssue(req.params.id,req.body.resolutionNotes,req.user);res.status(200).json({issue});}catch(e){res.status(400).json({title:"Unable to resolve issue",status:400,detail:e instanceof Error?e.message:"Unable to resolve"});}}
+
   public static async logInboundReply(req: Request, res: Response): Promise<void> {
     if (!req.user) {
       res.status(401).json({ title: "Unauthorized", status: 401 });

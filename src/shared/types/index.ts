@@ -97,6 +97,9 @@ export type MessageDirection = "OUTBOUND" | "INBOUND";
 export type MessageType = "FIRST_TOUCH" | "FOLLOW_UP" | "RESPONSE" | "VALUE_MESSAGE" | "MANUAL";
 export type MessageStatus = "GENERATED" | "EDITED" | "APPROVED" | "WHATSAPP_OPENED" | "SENT" | "FAILED";
 
+export type ContactIssueType = "NO_PHONE" | "NOT_ON_WHATSAPP";
+export interface LeadContactIssue { id:string; leadId:string; issueType:ContactIssueType; status:"OPEN"|"RESOLVED"; notes?:string; reportedByUserId:string; createdAt:string; resolvedAt?:string; resolvedByUserId?:string; resolutionNotes?:string; }
+
 export interface Message {
   id: string;
   conversationId: string;
