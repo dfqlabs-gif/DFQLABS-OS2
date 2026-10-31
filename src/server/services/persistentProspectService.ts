@@ -123,6 +123,9 @@ export class PersistentProspectService {
     const db = getSupabaseClient();
     if (!db) throw new Error("Persistent database is not configured");
     await this.ensureUser(user);
+    const { data: openIssues, error: openIssuesError } = await db.from("lead_contact_issues").select("lead_id").eq("status","OPEN");
+    if (openIssuesError) throw new Error(openIssuesError.message);
+    const blockedLeadIds = new Set<string>((openIssues || []).map((row: {lead_id:string}) => row.lead_id));
     const now = new Date();
     // Daily reporting follows the Nigeria (Africa/Lagos) calendar day.
     const local = new Date(now.getTime() + 60 * 60 * 1000);
@@ -152,7 +155,7 @@ export class PersistentProspectService {
       const { data: ownedRows, error: ownedError } = await db.from("leads").select("id")
         .eq("owner_user_id", user.id).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").limit(2000);
       if (ownedError) throw new Error(ownedError.message);
-      const ownedIds = (ownedRows || []).map((x: {id:string}) => x.id);
+      const ownedIds = (ownedRows || []).map((x: {id:string}) => x.id).filter((id:string) => !blockedLeadIds.has(id));
       const ownedContactable = new Set<string>();
       for (let i = 0; i < ownedIds.length; i += 200) {
         const { data, error } = await db.from("lead_contacts").select("lead_id,normalized_value")
@@ -166,7 +169,7 @@ export class PersistentProspectService {
           .eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").order("created_at", {ascending:true}).limit(1000);
         if (error) throw new Error(error.message);
         const eligible = (candidates || []).filter((x: {id:string;owner_user_id:string}) =>
-          x.owner_user_id !== user.id && !activeSpecialists.has(x.owner_user_id));
+          x.owner_user_id !== user.id && !activeSpecialists.has(x.owner_user_id) && !blockedLeadIds.has(x.id));
         const ids = eligible.map((x: {id:string}) => x.id);
         const contactable = new Set<string>();
         for (let i = 0; i < ids.length; i += 200) {
