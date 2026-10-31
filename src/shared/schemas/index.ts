@@ -31,10 +31,10 @@ export const ConfirmSentSchema = z.object({
   finalContent: z.string().min(1, "Final content is required")
 });
 
-export const InboundReplySchema = z.object({
-  content: z.string().min(1, "Inbound message content is required"),
-  sentAt: z.string().datetime().optional()
-});
+export const InboundReplySchema = z.object({content:z.string().trim().min(1,"Inbound message content is required"),sentAt:z.string().datetime().optional()});
+export const ManualOutboundSchema=z.object({content:z.string().trim().min(1).max(10000),sentAt:z.string().datetime().optional()});
+export const ContactIssueSchema=z.object({issueType:z.enum(["NO_PHONE","NOT_ON_WHATSAPP"]),notes:z.string().max(2000).optional()});
+export const ResolveContactIssueSchema=z.object({resolutionNotes:z.string().max(2000).optional()});
 
 export const GenerateFollowUpSchema = z.object({ leadId: z.string().uuid("Valid lead UUID required") });
 
