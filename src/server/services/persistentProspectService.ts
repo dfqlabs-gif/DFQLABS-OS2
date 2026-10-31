@@ -123,6 +123,9 @@ export class PersistentProspectService {
     const db = getSupabaseClient();
     if (!db) throw new Error("Persistent database is not configured");
     await this.ensureUser(user);
+    const { data: openIssues, error: openIssuesError } = await db.from("lead_contact_issues").select("lead_id").eq("status","OPEN");
+    if (openIssuesError) throw new Error(openIssuesError.message);
+    const blockedLeadIds = new Set<string>((openIssues || []).map((row: {lead_id:string}) => row.lead_id));
     const now = new Date();
     // Daily reporting follows the Nigeria (Africa/Lagos) calendar day.
     const local = new Date(now.getTime() + 60 * 60 * 1000);
@@ -152,7 +155,7 @@ export class PersistentProspectService {
       const { data: ownedRows, error: ownedError } = await db.from("leads").select("id")
         .eq("owner_user_id", user.id).eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").limit(2000);
       if (ownedError) throw new Error(ownedError.message);
-      const ownedIds = (ownedRows || []).map((x: {id:string}) => x.id);
+      const ownedIds = (ownedRows || []).map((x: {id:string}) => x.id).filter((id:string) => !blockedLeadIds.has(id));
       const ownedContactable = new Set<string>();
       for (let i = 0; i < ownedIds.length; i += 200) {
         const { data, error } = await db.from("lead_contacts").select("lead_id,normalized_value")
@@ -166,7 +169,7 @@ export class PersistentProspectService {
           .eq("status", "ACTIVE").eq("pipeline_stage", "UNCONTACTED").order("created_at", {ascending:true}).limit(1000);
         if (error) throw new Error(error.message);
         const eligible = (candidates || []).filter((x: {id:string;owner_user_id:string}) =>
-          x.owner_user_id !== user.id && !activeSpecialists.has(x.owner_user_id));
+          x.owner_user_id !== user.id && !activeSpecialists.has(x.owner_user_id) && !blockedLeadIds.has(x.id));
         const ids = eligible.map((x: {id:string}) => x.id);
         const contactable = new Set<string>();
         for (let i = 0; i < ids.length; i += 200) {
@@ -568,6 +571,16 @@ export class PersistentProspectService {
     EventService.logEvent({ eventType: "MESSAGE_GENERATED", leadId, actorUserId: user.id, payload: { messageId: data.id, messageType: "FOLLOW_UP" } });
     return mapMessage(data as MessageRow);
   }
+
+  static async logManualOutbound(leadId:string,content:string,sentAt:string|undefined,user:User):Promise<Message>{
+    const db=getSupabaseClient();if(!db)throw new Error("Database is not configured");const detail=await this.getById(leadId,user);if(!detail)throw new Error("Lead not found");let conversation=detail.conversation;
+    if(!conversation){const c=await db.from("conversations").insert({lead_id:leadId,channel:"WHATSAPP"}).select("*").single();if(c.error||!c.data)throw new Error(c.error?.message||"Conversation unavailable");conversation=c.data;}
+    const timestamp=sentAt||new Date().toISOString();const {data,error}=await db.from("messages").insert({conversation_id:conversation.id,sender_user_id:user.id,direction:"OUTBOUND",type:"MANUAL",human_edited_content:content,final_sent_content:content,status:"SENT",evidence_used:[],created_at:timestamp,sent_at:timestamp}).select("*").single();
+    if(error||!data)throw new Error(error?.message||"Unable to log outbound message");await db.from("conversations").update({last_message_at:timestamp,updated_at:new Date().toISOString()}).eq("id",conversation.id);await db.from("leads").update({pipeline_stage:detail.lead.pipelineStage==="UNCONTACTED"?"CONTACTED":detail.lead.pipelineStage,last_contact_at:timestamp,updated_at:new Date().toISOString()}).eq("id",leadId);EventService.logEvent({eventType:"MESSAGE_SENT",leadId,actorUserId:user.id,payload:{messageId:data.id,channel:"MANUAL_LOG"}});return mapMessage(data as MessageRow);
+  }
+  static async reportContactIssue(leadId:string,issueType:"NO_PHONE"|"NOT_ON_WHATSAPP",notes:string|undefined,user:User){const db=getSupabaseClient();if(!db)throw new Error("Database is not configured");if(!await this.getById(leadId,user))throw new Error("Lead not found");const {data:existing}=await db.from("lead_contact_issues").select("*").eq("lead_id",leadId).eq("status","OPEN").maybeSingle();if(existing)return existing;const {data,error}=await db.from("lead_contact_issues").insert({lead_id:leadId,reported_by_user_id:user.id,issue_type:issueType,status:"OPEN",notes:notes||null}).select("*").single();if(error||!data)throw new Error(error?.message||"Unable to report issue");return data;}
+  static async listContactIssues(user:User){const db=getSupabaseClient();if(!db)throw new Error("Database is not configured");let q=db.from("lead_contact_issues").select("*,leads(company_name,contact_name)").order("created_at",{ascending:false});if(user.role!=="FOUNDER")q=q.eq("reported_by_user_id",user.id);const {data,error}=await q;if(error)throw new Error(error.message);return data||[];}
+  static async resolveContactIssue(id:string,notes:string|undefined,user:User){if(user.role!=="FOUNDER")throw new Error("Founder access required");const db=getSupabaseClient();if(!db)throw new Error("Database is not configured");const {data,error}=await db.from("lead_contact_issues").update({status:"RESOLVED",resolved_at:new Date().toISOString(),resolved_by_user_id:user.id,resolution_notes:notes||null}).eq("id",id).eq("status","OPEN").select("*").single();if(error||!data)throw new Error(error?.message||"Open issue not found");return data;}
 
   static async logInboundReply(id: string, content: string, sentAt: string | undefined, user: User): Promise<Message> {
     const db = getSupabaseClient();
