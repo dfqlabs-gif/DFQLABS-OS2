@@ -12,5 +12,7 @@ CREATE INDEX IF NOT EXISTS idx_contact_issues_status_created ON lead_contact_iss
 ALTER TABLE lead_contact_issues ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Founders can manage contact issues" ON lead_contact_issues FOR ALL TO authenticated
  USING ((SELECT role FROM users WHERE id=auth.uid())='FOUNDER') WITH CHECK ((SELECT role FROM users WHERE id=auth.uid())='FOUNDER');
-CREATE POLICY "Specialists can report and view own contact issues" ON lead_contact_issues FOR ALL TO authenticated
- USING (reported_by_user_id=auth.uid()) WITH CHECK (reported_by_user_id=auth.uid());
+CREATE POLICY "Specialists can view own contact issues" ON lead_contact_issues FOR SELECT TO authenticated
+ USING (reported_by_user_id=auth.uid());
+CREATE POLICY "Specialists can report contact issues" ON lead_contact_issues FOR INSERT TO authenticated
+ WITH CHECK (reported_by_user_id=auth.uid());
