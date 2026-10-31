@@ -2,237 +2,38 @@ import React, { useEffect, useState } from "react";
 import { Lead, Message } from "../../shared/types/index.js";
 import { Skeleton } from "../components/Skeleton.js";
 import { StatusBadge } from "../components/StatusBadge.js";
-import { UnderConstruction } from "../components/UnderConstruction.js";
 import { useToast } from "../context/ToastContext.js";
 import { ApiClient } from "../services/api.js";
 
+type ContactIssue = {id:string;lead_id:string;issue_type:"NO_PHONE"|"NOT_ON_WHATSAPP";status:"OPEN"|"RESOLVED";notes?:string;leads?:{company_name?:string;contact_name?:string}};
 export const ConversationsPage: React.FC = () => {
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [activeMessage, setActiveMessage] = useState<Message | null>(null);
-  const [draftContent, setDraftContent] = useState("");
-  const [waOpened, setWaOpened] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  const { addToast } = useToast();
-
-  useEffect(() => {
-    ApiClient.getProspects().then((res) => {
-      setLeads(res.leads);
-      if (res.leads.length > 0) {
-        selectLead(res.leads[0]);
-      } else {
-        setLoading(false);
-      }
-    });
-  }, []);
-
-  const selectLead = async (lead: Lead) => {
-    setSelectedLead(lead);
-    setLoading(true);
-    try {
-      const res = await ApiClient.getProspectDetail(lead.id);
-      const fetchedMessages = res.messages as Message[];
-      setMessages(fetchedMessages);
-
-      if (fetchedMessages.length === 0) {
-        const generated = await ApiClient.generateFirstTouch(lead.id);
-        setMessages([generated.message]);
-        setActiveMessage(generated.message);
-        setDraftContent(generated.message.aiGeneratedContent || "");
-      } else {
-        const latest = fetchedMessages[fetchedMessages.length - 1];
-        setActiveMessage(latest);
-        setDraftContent(latest.humanEditedContent || latest.aiGeneratedContent || latest.finalSentContent || "");
-      }
-    } catch (e) {
-      addToast((e as Error).message, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!activeMessage) return;
-    try {
-      const updated = await ApiClient.updateMessageDraft(activeMessage.id, draftContent);
-      setActiveMessage(updated.message);
-      addToast("Draft edits saved!", "info");
-    } catch (e) {
-      addToast((e as Error).message, "error");
-    }
-  };
-
-  const handleOpenWhatsApp = async () => {
-    if (!activeMessage) return;
-    try {
-      const res = await ApiClient.openWhatsApp(activeMessage.id);
-      setActiveMessage(res.message);
-      setWaOpened(true);
-      window.open(res.whatsappUrl, "_blank");
-      addToast("WhatsApp window opened", "info");
-    } catch (e) {
-      addToast((e as Error).message, "error");
-    }
-  };
-
-  const handleConfirmSent = async () => {
-    if (!activeMessage) return;
-    try {
-      const res = await ApiClient.confirmSent(activeMessage.id, draftContent);
-      setActiveMessage(res.message);
-      setWaOpened(false);
-      if (selectedLead) {
-        setSelectedLead({ ...selectedLead, pipelineStage: "CONTACTED" });
-      }
-      addToast("Message confirmed as SENT! Lead stage updated to CONTACTED", "success");
-    } catch (e) {
-      addToast((e as Error).message, "error");
-    }
-  };
-
-  return (
-    <div>
-      <UnderConstruction
-        moduleName="Full Multi-Channel Conversation Threading"
-        description="Showing working WhatsApp execution flow with canonical URL builder and confirm-sent state machine. Email & Instagram DM thread sync is under construction."
-        targetPhase="Phase 5 & 6"
-      />
-
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "20px" }}>
-        {/* Left: Lead Selector */}
-        <div className="card" style={{ padding: "16px" }}>
-          <h3 style={{ fontSize: "12px", marginTop: 0, marginBottom: "12px", textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.08em" }}>
-            Prospects ({leads.length})
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {leads.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => selectLead(l)}
-                style={{
-                  padding: "12px",
-                  borderRadius: "var(--radius-md)",
-                  background: selectedLead?.id === l.id ? "var(--bg-card-hover)" : "transparent",
-                  border: `1px solid ${selectedLead?.id === l.id ? "var(--accent-glacier)" : "var(--border-color)"}`,
-                  textAlign: "left",
-                  cursor: "pointer",
-                  color: "var(--text-primary)",
-                  transition: "all var(--transition-fast)"
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: "14px" }}>{l.companyName}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-                  <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{l.contactName || "No Contact"}</span>
-                  <StatusBadge status={l.pipelineStage} />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Right: Message & WhatsApp Execution */}
-        <div className="card">
-          {loading || !selectedLead ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <Skeleton height="30px" width="50%" />
-              <Skeleton height="100px" />
-            </div>
-          ) : (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "16px" }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 700 }}>{selectedLead.companyName}</h2>
-                  <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--text-secondary)" }}>
-                    Contact: {selectedLead.contactName ?? "Head of Marketing"} | Stage: <StatusBadge status={selectedLead.pipelineStage} />
-                  </p>
-                </div>
-                {activeMessage && (
-                  <span style={{ fontSize: "12px", padding: "4px 10px", borderRadius: "var(--radius-sm)", background: "var(--bg-primary)", border: "1px solid var(--border-color)" }}>
-                    Status: <strong style={{ color: "var(--accent-glacier)" }}>{activeMessage.status}</strong>
-                  </span>
-                )}
-              </div>
-
-              {/* Thread History */}
-              {messages.length > 0 && (
-                <div style={{ marginBottom: "20px" }}>
-                  <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: "8px", letterSpacing: "0.08em" }}>
-                    Conversation Timeline ({messages.length} messages)
-                  </div>
-                  {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      style={{
-                        padding: "12px 16px",
-                        borderRadius: "var(--radius-md)",
-                        background: m.direction === "OUTBOUND" ? "var(--accent-glacier-glow)" : "var(--bg-primary)",
-                        border: "1px solid var(--border-color)",
-                        marginBottom: "8px",
-                        fontSize: "13px"
-                      }}
-                    >
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>
-                        {m.direction} • {m.type} • Status: {m.status}
-                      </div>
-                      {m.finalSentContent || m.humanEditedContent || m.aiGeneratedContent}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Verified Evidence Box */}
-              <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "14px 18px", marginBottom: "20px" }}>
-                <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--accent-glacier)", fontWeight: 700, marginBottom: "4px" }}>
-                  Verified Evidence Grounding
-                </div>
-                <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                  {selectedLead.evidence?.[0]?.evidenceText || "VERIFIED_FACT: Operating real estate firm in Nigeria."}
-                </div>
-              </div>
-
-              {/* Message Draft Editor */}
-              <div className="form-group">
-                <label className="form-label">Outreach Message Draft (Gemini Grounded)</label>
-                <textarea
-                  className="form-textarea"
-                  rows={5}
-                  value={draftContent}
-                  onChange={(e) => setDraftContent(e.target.value)}
-                  disabled={activeMessage?.status === "SENT"}
-                />
-              </div>
-
-              {/* Execution Actions */}
-              <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "20px" }}>
-                {activeMessage?.status !== "SENT" && (
-                  <>
-                    <button className="btn-secondary" onClick={handleSaveEdit}>
-                      Save Edit
-                    </button>
-                    <button className="btn-primary" onClick={handleOpenWhatsApp}>
-                      📲 Open WhatsApp
-                    </button>
-                  </>
-                )}
-
-                {(waOpened || activeMessage?.status === "WHATSAPP_OPENED") && activeMessage?.status !== "SENT" && (
-                  <button className="btn-primary" style={{ background: "linear-gradient(135deg, #10b981, #059669)" }} onClick={handleConfirmSent}>
-                    ✅ Confirm Message Sent
-                  </button>
-                )}
-
-                {activeMessage?.status === "SENT" && (
-                  <div style={{ color: "var(--accent-emerald)", fontWeight: 700, fontSize: "14px" }}>
-                    ✅ Message Sent & Confirmed on {new Date(activeMessage.sentAt || "").toLocaleDateString()}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+ const [leads,setLeads]=useState<Lead[]>([]),[selectedLead,setSelectedLead]=useState<Lead|null>(null),[messages,setMessages]=useState<Message[]>([]),[activeMessage,setActiveMessage]=useState<Message|null>(null),[draftContent,setDraftContent]=useState(""),[waOpened,setWaOpened]=useState(false),[loading,setLoading]=useState(true);
+ const [incoming,setIncoming]=useState(""),[manualOutbound,setManualOutbound]=useState(""),[issueType,setIssueType]=useState<"NO_PHONE"|"NOT_ON_WHATSAPP">("NO_PHONE"),[issueNotes,setIssueNotes]=useState(""),[issues,setIssues]=useState<ContactIssue[]>([]);
+ const {addToast}=useToast();
+ const refreshIssues=async()=>{try{setIssues((await ApiClient.getContactIssues()).issues as ContactIssue[]);}catch(e){addToast((e as Error).message,"error");}};
+ const refreshThread=async(leadId:string)=>{const res=await ApiClient.getProspectDetail(leadId);const ordered=[...res.messages].sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime());setMessages(ordered);setSelectedLead(res.lead);const draft=[...ordered].reverse().find(m=>m.direction==="OUTBOUND"&&m.status!=="SENT");setActiveMessage(draft||null);setDraftContent(draft?.humanEditedContent||draft?.aiGeneratedContent||"");};
+ const selectLead=async(lead:Lead)=>{setSelectedLead(lead);setLoading(true);setWaOpened(false);try{const res=await ApiClient.getProspectDetail(lead.id);const ordered=[...res.messages].sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime());setMessages(ordered);const draft=[...ordered].reverse().find(m=>m.direction==="OUTBOUND"&&m.status!=="SENT");setActiveMessage(draft||null);setDraftContent(draft?.humanEditedContent||draft?.aiGeneratedContent||"");}catch(e){addToast((e as Error).message,"error");}finally{setLoading(false);}};
+ useEffect(()=>{ApiClient.getProspects().then(r=>{setLeads(r.leads);if(r.leads.length)void selectLead(r.leads[0]);else setLoading(false);}).catch(e=>{addToast((e as Error).message,"error");setLoading(false);});void refreshIssues();},[]);
+ const run=async(fn:()=>Promise<void>)=>{try{await fn();}catch(e){addToast((e as Error).message,"error");}};
+ const save=()=>run(async()=>{if(!activeMessage)return;const r=await ApiClient.updateMessageDraft(activeMessage.id,draftContent);setActiveMessage(r.message);addToast("Draft saved.","success");});
+ const open=()=>run(async()=>{if(!activeMessage)return;const r=await ApiClient.openWhatsApp(activeMessage.id);setActiveMessage(r.message);setWaOpened(true);window.open(r.whatsappUrl,"_blank","noopener,noreferrer");});
+ const confirm=()=>run(async()=>{if(!activeMessage)return;await ApiClient.confirmSent(activeMessage.id,draftContent);setWaOpened(false);if(selectedLead)await refreshThread(selectedLead.id);addToast("WhatsApp send confirmed.","success");});
+ const generate=()=>run(async()=>{if(!selectedLead)return;const r=await ApiClient.generateFirstTouch(selectedLead.id);await refreshThread(selectedLead.id);setActiveMessage(r.message);setDraftContent(r.message.aiGeneratedContent||"");});
+ const logInbound=()=>run(async()=>{if(!selectedLead||!incoming.trim())return;const detail=await ApiClient.getProspectDetail(selectedLead.id);if(!detail.conversation?.id)throw Error("No conversation exists yet. Generate a draft before logging an incoming reply.");await ApiClient.logInboundReply(detail.conversation.id,incoming.trim());setIncoming("");await refreshThread(selectedLead.id);addToast("Incoming message added to timeline.","success");});
+ const logOutbound=()=>run(async()=>{if(!selectedLead||!manualOutbound.trim())return;await ApiClient.logManualOutbound(selectedLead.id,manualOutbound.trim());setManualOutbound("");await refreshThread(selectedLead.id);addToast("Previously sent message recorded. No message was sent by this action.","success");});
+ const reportIssue=()=>run(async()=>{if(!selectedLead)return;await ApiClient.reportContactIssue(selectedLead.id,issueType,issueNotes);setIssueNotes("");await refreshIssues();addToast("Contact issue reported. Prospect retained and excluded from first-touch assignment.","success");});
+ const resolveIssue=(id:string)=>run(async()=>{const resolutionNotes=window.prompt("Resolution notes (optional):")||"";await ApiClient.resolveContactIssue(id,resolutionNotes);await refreshIssues();addToast("Issue resolved. Prospect is eligible for assignment again if still contactable.","success");});
+ const openIssues=issues.filter(i=>i.status==="OPEN");
+ return <div style={{display:"grid",gridTemplateColumns:"minmax(250px,300px) minmax(0,1fr)",gap:20}}>
+  <aside className="card" style={{padding:16}}><h3>Prospects ({leads.length})</h3>{leads.map(l=><button key={l.id} onClick={()=>void selectLead(l)} style={{display:"block",width:"100%",textAlign:"left",padding:12,marginBottom:8,borderRadius:8,border:selectedLead?.id===l.id?"1px solid var(--accent-glacier)":"1px solid var(--border-color)",background:"transparent",color:"var(--text-primary)"}}><b>{l.companyName}</b><div style={{fontSize:12,marginTop:4}}>{l.contactName||"No contact"} · {l.pipelineStage}</div></button>)}
+   <h3 style={{marginTop:24}}>Open contact issues ({openIssues.length})</h3>{openIssues.map(i=><div key={i.id} style={{padding:10,border:"1px solid var(--border-color)",borderRadius:8,marginBottom:8,fontSize:12}}><b>{i.leads?.company_name||i.lead_id}</b><div>{i.issue_type.replaceAll("_"," ")}</div>{i.notes&&<p>{i.notes}</p>}<button className="btn-secondary" onClick={()=>void resolveIssue(i.id)}>Resolve issue</button></div>)}{!openIssues.length&&<small>No open issues.</small>}
+  </aside>
+  <main className="card" style={{padding:20}}>{loading||!selectedLead?<Skeleton height="120px"/>:<><h2>{selectedLead.companyName}</h2><p>Contact: {selectedLead.contactName||"Unknown"} · Stage: <StatusBadge status={selectedLead.pipelineStage}/></p>
+   <h3>Conversation timeline ({messages.length})</h3>{messages.map(m=><article key={m.id} style={{padding:12,marginBottom:8,borderRadius:8,background:m.direction==="OUTBOUND"?"var(--accent-glacier-glow)":"var(--bg-primary)",border:"1px solid var(--border-color)"}}><small>{m.direction} · {m.type} · {m.status} · {new Date(m.sentAt||m.createdAt).toLocaleString()}</small><p style={{whiteSpace:"pre-wrap",marginBottom:0}}>{m.finalSentContent||m.humanEditedContent||m.aiGeneratedContent}</p></article>)}
+   <section style={{marginTop:20}}><h3>Record incoming message</h3><textarea className="form-textarea" rows={3} value={incoming} onChange={e=>setIncoming(e.target.value)} placeholder="Paste the prospect's incoming message"/><button className="btn-secondary" disabled={!incoming.trim()} onClick={()=>void logInbound()}>Record incoming message</button></section>
+   <section style={{marginTop:20}}><h3>Log an outbound message already sent</h3><textarea className="form-textarea" rows={3} value={manualOutbound} onChange={e=>setManualOutbound(e.target.value)} placeholder="Paste the exact message already sent outside DFQLABS"/><button className="btn-secondary" disabled={!manualOutbound.trim()} onClick={()=>void logOutbound()}>Add to timeline</button><small style={{display:"block"}}>History logging only. This does not send a WhatsApp message.</small></section>
+   <section style={{marginTop:20}}><h3>Report contactability issue</h3><select className="form-input" value={issueType} onChange={e=>setIssueType(e.target.value as "NO_PHONE"|"NOT_ON_WHATSAPP")}><option value="NO_PHONE">No phone number</option><option value="NOT_ON_WHATSAPP">Not on WhatsApp</option></select><input className="form-input" value={issueNotes} onChange={e=>setIssueNotes(e.target.value)} placeholder="Optional context"/><button className="btn-secondary" onClick={()=>void reportIssue()}>Report issue</button></section>
+   <section style={{marginTop:24,borderTop:"1px solid var(--border-color)",paddingTop:16}}><h3>WhatsApp outreach draft</h3>{activeMessage?<><textarea className="form-textarea" rows={5} value={draftContent} onChange={e=>setDraftContent(e.target.value)} disabled={activeMessage.status==="SENT"}/>{activeMessage.status!=="SENT"&&<div style={{display:"flex",gap:8,marginTop:10}}><button className="btn-secondary" onClick={()=>void save()}>Save edit</button><button className="btn-primary" onClick={()=>void open()}>Open WhatsApp</button>{(waOpened||activeMessage.status==="WHATSAPP_OPENED")&&<button className="btn-primary" onClick={()=>void confirm()}>Confirm sent</button>}</div>}</>:<button className="btn-primary" onClick={()=>void generate()}>Generate first-touch draft</button>}</section>
+  </>}</main>
+ </div>;
 };
