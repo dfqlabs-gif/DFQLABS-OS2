@@ -261,9 +261,9 @@ export class PersistentProspectService {
     };
   }
 
-  static async getById(id: string, user: User) {
+  static async getById(id: string, _user: User) {
     const db = getSupabaseClient(); if (!db) return null;
-    let q = db.from("leads").select("*").eq("id", id);
+    const q = db.from("leads").select("*").eq("id", id);
     // Specialists may open any lead in the shared system directory.
     const { data: row, error } = await q.single();
     if (error || !row) return null;
