@@ -34,23 +34,41 @@ export const LeadFinderPage: React.FC = () => {
     }
   }, []);
 
+  const [initialLoading, setInitialLoading] = React.useState(true);
+  const [summaryError, setSummaryError] = React.useState("");
+
   const refresh = React.useCallback(async () => {
-    const [s, h] = await Promise.all([
+    const [summaryResult, historyResult] = await Promise.allSettled([
       ApiClient.getLeadFinderSummary(),
       ApiClient.getLeadFinderHistory()
     ]);
-    const runs = h.runs || [];
-    const active = runs.find((r: any) => r.status === "RUNNING") || null;
-    setSummary(s);
-    setHistory(runs);
-    setRunning(Boolean(active));
-    setProgress(active);
-    setTrackedRunId(active?.id || null);
-    return active;
+    const failures: string[] = [];
+    if (summaryResult.status === "fulfilled") {
+      setSummary(summaryResult.value);
+    } else {
+      failures.push(summaryResult.reason instanceof Error ? summaryResult.reason.message : String(summaryResult.reason));
+    }
+    if (historyResult.status === "fulfilled") {
+      const runs = historyResult.value.runs || [];
+      const active = runs.find((r: any) => r.status === "RUNNING") || null;
+      setHistory(runs);
+      setRunning(Boolean(active));
+      setProgress(active);
+      setTrackedRunId(active?.id || null);
+    } else {
+      failures.push(historyResult.reason instanceof Error ? historyResult.reason.message : String(historyResult.reason));
+    }
+    const message = failures.join(" · ");
+    setSummaryError(message);
+    if (failures.length) setError(message);
+    else setError("");
+    return historyResult.status === "fulfilled"
+      ? historyResult.value.runs.find((r: any) => r.status === "RUNNING") || null
+      : null;
   }, []);
 
   React.useEffect(() => {
-    refresh().catch((e) => setError(e.message));
+    refresh().finally(() => setInitialLoading(false));
   }, [refresh]);
 
   React.useEffect(() => {
@@ -129,6 +147,8 @@ export const LeadFinderPage: React.FC = () => {
     }
     setStarting(true);
     try {
+      // A history/summary read failure must not silently prevent the actual scan
+      // request. The run endpoint performs its own authoritative database checks.
       const active = await refresh();
       if (active) {
         setRunning(true);
@@ -353,7 +373,15 @@ export const LeadFinderPage: React.FC = () => {
         </div>
       )}
 
-      {error && <div className="lead-finder-error">{error}</div>}
+      {initialLoading && <div className="finder-diagnostics-note" role="status">Connecting to Lead Finder and loading recent scan history…</div>}
+      {summaryError && (
+        <div className="lead-finder-error" role="alert">
+          <strong>Lead Finder could not load all production data.</strong>
+          <span>{summaryError}</span>
+          <button type="button" className="btn-secondary" onClick={() => { setInitialLoading(true); refresh().finally(() => setInitialLoading(false)); }}>Retry connection</button>
+        </div>
+      )}
+      {error && error !== summaryError && <div className="lead-finder-error" role="alert">{error}</div>}
 
       <div className="lead-finder-progress card">
         <div className="finder-progress-top">
