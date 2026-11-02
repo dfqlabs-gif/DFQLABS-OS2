@@ -121,9 +121,9 @@ function isTargetCompanyName(value: string, evidence: string): boolean {
   const name = normalize(value);
   const combined = normalize(evidence);
   // Exclude individual agents/brokers and personal-name-only identities.
-  if (/\\b(?:independent realtor|freelance realtor|property agent|real estate agent|estate agent|broker|property consultant)\\b/.test(name)) return false;
-  const corporateNameSignal = /\\b(?:limited|ltd|plc|incorporated|inc\\.?|company|co\\.?|group|holdings|ventures|investments|developers?|development|properties|property|realty|estates?|homes?|shelters|housing|constructions?|capital|projects|consortium)\\b/.test(name);
-  const corporateEvidence = /\\b(?:limited|ltd|plc|registered company|incorporated|corporate office|head office|our company|about us|company profile|property development company|real estate development company)\\b/.test(combined);
+  if (/\b(?:independent realtor|freelance realtor|property agent|real estate agent|estate agent|broker|property consultant)\b/.test(name)) return false;
+  const corporateNameSignal = /\b(?:limited|ltd|plc|incorporated|inc\.?|company|co\.?|group|holdings|ventures|investments|developers?|development|properties|property|realty|estates?|homes?|shelters|housing|constructions?|capital|projects|consortium)\b/.test(name);
+  const corporateEvidence = /\b(?:limited|ltd|plc|registered company|incorporated|corporate office|head office|our company|about us|company profile|property development company|real estate development company)\b/.test(combined);
   return corporateNameSignal || corporateEvidence;
 }
 
@@ -133,10 +133,10 @@ function hasDiscoveredSocialProfile(candidate: RawCandidate): boolean {
   return profiles.some((value) => {
     try {
       const url = new URL(value);
-      const host = url.hostname.toLowerCase().replace(/^www\\./, "");
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
       if (host === "instagram.com") return url.pathname.split("/").filter(Boolean).length >= 1;
       if (host === "facebook.com") return url.pathname.split("/").filter(Boolean).length >= 1;
-      if (host === "linkedin.com") return /^\\/(?:company|showcase)\\//i.test(url.pathname);
+      if (host === "linkedin.com") return /^\/(?:company|showcase)\//i.test(url.pathname);
       return false;
     } catch { return false; }
   });
