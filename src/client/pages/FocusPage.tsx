@@ -13,10 +13,11 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
   const [items, setItems] = useState<FocusItem[]>([]);
   const [metrics, setMetrics] = useState<TodayFocusMetrics>(emptyMetrics);
   const [loading, setLoading] = useState(true);
+  const [diagnostics, setDiagnostics] = useState<{activeUncontacted:number;contactableUncontacted:number;missingPhoneOrWhatsapp:number;blockedByOpenContactIssue:number} | null>(null);
   const { addToast } = useToast();
   const load = () => {
     setLoading(true);
-    ApiClient.getTodayFocus().then((res) => { setItems(res.focusItems); setMetrics(res.metrics || emptyMetrics); })
+    ApiClient.getTodayFocus().then((res) => { setItems(res.focusItems); setMetrics(res.metrics || emptyMetrics); setDiagnostics(res.queueDiagnostics || null); })
       .catch((err) => addToast(err.message, "error")).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
@@ -51,7 +52,17 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
         <button className="btn-secondary" onClick={() => onNavigate("/prospects")}>Open My Leads</button>
       </div>
       {loading ? <div style={{ display: "flex", flexDirection: "column", gap: 12 }}><Skeleton height="80px" /><Skeleton height="80px" /></div> :
-        ordered.length === 0 ? <div className="empty-state"><strong>No pending actions.</strong><span>If your ready-to-contact queue is empty, ask the Founder to replenish the lead pool or run Lead Finder.</span></div> :
+        ordered.length === 0 ? <div className="empty-state">
+          <strong>No pending actions in your execution queue.</strong>
+          <span>The system checks active uncontacted leads for a usable phone or WhatsApp number before placing them here.</span>
+          {diagnostics && <div style={{ display:"flex", flexWrap:"wrap", gap:12, justifyContent:"center", marginTop:12 }}>
+            <span>{diagnostics.activeUncontacted} active uncontacted leads</span>
+            <span>{diagnostics.contactableUncontacted} with phone/WhatsApp</span>
+            <span>{diagnostics.missingPhoneOrWhatsapp} missing phone/WhatsApp</span>
+            {diagnostics.blockedByOpenContactIssue > 0 && <span>{diagnostics.blockedByOpenContactIssue} blocked by open contact issues</span>}
+          </div>}
+          <button className="btn-secondary" style={{ marginTop:14 }} onClick={() => onNavigate("/prospects")}>Open full lead directory</button>
+        </div> :
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{ordered.map((item) => <div key={item.id} style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: 16, background: "var(--bg-primary)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
           <div style={{ minWidth: 0 }}><div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}><strong style={{ fontSize: 15 }}>{item.lead.companyName}</strong><StatusBadge status={item.lead.pipelineStage} /><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em", color: item.type === "UNREPLIED_INBOUND" ? "#10b981" : item.type === "OVERDUE_FOLLOW_UP" ? "#f59e0b" : "var(--accent-glacier)" }}>{kindLabel[item.type]}</span></div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 4 }}>{item.priorityReason}</div><div style={{ fontSize: 12, color: "var(--text-muted)" }}>{item.recommendedAction}</div></div>

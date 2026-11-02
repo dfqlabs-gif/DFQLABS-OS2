@@ -119,7 +119,11 @@ export class PersistentProspectService {
     }
   }
 
-  static async getTodayFocus(user: User, target = 30): Promise<{ focusItems: FocusItem[]; metrics: TodayFocusMetrics }> {
+  static async getTodayFocus(user: User, target = 30): Promise<{
+    focusItems: FocusItem[];
+    metrics: TodayFocusMetrics;
+    queueDiagnostics: { activeUncontacted: number; contactableUncontacted: number; missingPhoneOrWhatsapp: number; blockedByOpenContactIssue: number };
+  }> {
     const db = getSupabaseClient();
     if (!db) throw new Error("Persistent database is not configured");
     await this.ensureUser(user);
@@ -240,7 +244,35 @@ export class PersistentProspectService {
     const priorityRank:Record<FocusItem["type"],number> = {UNREPLIED_INBOUND:0,OVERDUE_FOLLOW_UP:1,UNCONTACTED_PROSPECT:2};
     const prioritized = focusItems.sort((a,b)=>priorityRank[a.type]-priorityRank[b.type]||(a.dueAt||"").localeCompare(b.dueAt||""));
     const todaysActions = prioritized.slice(0,dailyTarget);
-    return {focusItems:todaysActions,metrics:{target:dailyTarget,sentToday:sentToday.length,firstTouchesToday,followUpsSentToday,queuedFirstTouches:newLeads.length,dueFollowUps:due.length,unrepliedInbound:actionableInbound.length,remainingFirstTouches:Math.max(0,dailyTarget-firstTouchesToday)}};
+    // Diagnose the shared first-touch pool so an empty queue explains the actual blocker.
+    const poolIds:string[] = [];
+    for(let page=0;page<20;page++){
+      const {data:poolRows,error:poolError} = await db.from("leads").select("id")
+        .eq("status","ACTIVE").eq("pipeline_stage","UNCONTACTED")
+        .order("created_at",{ascending:true}).range(page*500,page*500+499);
+      if(poolError) throw new Error(poolError.message);
+      const batch=(poolRows || []).map((row:{id:string})=>row.id);
+      poolIds.push(...batch);
+      if(batch.length<500) break;
+    }
+    const poolContactable = new Set<string>();
+    for(let i=0;i<poolIds.length;i+=200){
+      const {data,error} = await db.from("lead_contacts").select("lead_id,normalized_value")
+        .in("lead_id",poolIds.slice(i,i+200)).in("contact_type",["PHONE","WHATSAPP"]);
+      if(error) throw new Error(error.message);
+      for(const contact of data || []){
+        const row=contact as {lead_id:string;normalized_value?:string};
+        if(row.normalized_value && !blockedLeadIds.has(row.lead_id)) poolContactable.add(row.lead_id);
+      }
+    }
+    const eligiblePool = poolIds.filter(id=>!blockedLeadIds.has(id));
+    const queueDiagnostics = {
+      activeUncontacted: eligiblePool.length,
+      contactableUncontacted: poolContactable.size,
+      missingPhoneOrWhatsapp: Math.max(0,eligiblePool.length-poolContactable.size),
+      blockedByOpenContactIssue: poolIds.length-eligiblePool.length
+    };
+    return {focusItems:todaysActions,metrics:{target:dailyTarget,sentToday:sentToday.length,firstTouchesToday,followUpsSentToday,queuedFirstTouches:newLeads.length,dueFollowUps:due.length,unrepliedInbound:actionableInbound.length,remainingFirstTouches:Math.max(0,dailyTarget-firstTouchesToday)},queueDiagnostics};
   }
 
   static async list(user: User, query: { search?: string; stage?: string; page?: number; limit?: number }) {
