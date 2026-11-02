@@ -218,17 +218,29 @@ export class PersistentProspectService {
     const firstTouchesToday = sentToday.filter((x:{type:string})=>x.type==="FIRST_TOUCH").length;
     const followUpsSentToday = sentToday.filter((x:{type:string})=>x.type==="FOLLOW_UP").length;
     const contactable = (lead:Lead) => (lead.contacts || []).some(c=>["PHONE","WHATSAPP"].includes(c.contactType)&&Boolean(c.normalizedValue));
-    const newLeads = leads.filter(l=>l.status==="ACTIVE"&&l.pipelineStage==="UNCONTACTED"&&contactable(l))
-      .sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).slice(0,Math.max(0,dailyTarget-firstTouchesToday));
-    const focusItems: FocusItem[] = [];
-    const inbound = leads.filter(l=>l.status==="ACTIVE"&&l.pipelineStage==="REPLIED");
-    for (const lead of inbound) focusItems.push({id:`inbound:${lead.id}`,lead,priorityReason:"A prospect has replied and needs a human response.",recommendedAction:"Open the prospect dossier, review the full message exchange, and record the next reply or outcome.",type:"UNREPLIED_INBOUND"});
+    // The daily list is 30 total actions, not 30 cold leads plus unlimited follow-ups.
+    // Specialists only execute work assigned to their seat; founders can inspect the full queue.
+    const assignedLeads = user.role === "OUTREACH_SPECIALIST"
+      ? leads.filter(l => l.ownerUserId === user.id)
+      : leads;
+    const actionableInbound = assignedLeads.filter(l=>l.status==="ACTIVE"&&l.pipelineStage==="REPLIED");
     const dueAt = (lead:Lead):string|undefined => lead.nextFollowUpAt || (lead.lastContactAt ? new Date(new Date(lead.lastContactAt).getTime()+3*86400000).toISOString() : undefined);
-    const due = leads.filter(l=>l.status==="ACTIVE"&&["CONTACTED","NURTURE"].includes(l.pipelineStage)&&Boolean(dueAt(l)&&new Date(dueAt(l)!).getTime()<=now.getTime()))
+    const due = assignedLeads.filter(l=>l.status==="ACTIVE"&&["CONTACTED","NURTURE"].includes(l.pipelineStage)&&Boolean(dueAt(l)&&new Date(dueAt(l)!).getTime()<=now.getTime()))
       .sort((a,b)=>(dueAt(a)||"").localeCompare(dueAt(b)||""));
-    for (const lead of due) focusItems.push({id:`followup:${lead.id}`,lead,priorityReason:`Follow-up due since ${new Date(dueAt(lead)!).toLocaleDateString("en-NG")}.`,recommendedAction:"Review the saved conversation and generate a context-aware follow-up.",dueAt:dueAt(lead),type:"OVERDUE_FOLLOW_UP"});
-    for (const lead of newLeads) focusItems.push({id:`first-touch:${lead.id}`,lead,priorityReason:"Contactable prospect awaiting first outreach.",recommendedAction:"Generate the first-touch DM, personalize it, open WhatsApp, send it, and confirm it was sent.",type:"UNCONTACTED_PROSPECT"});
-    return {focusItems,metrics:{target:dailyTarget,sentToday:sentToday.length,firstTouchesToday,followUpsSentToday,queuedFirstTouches:newLeads.length,dueFollowUps:due.length,unrepliedInbound:inbound.length,remainingFirstTouches:Math.max(0,dailyTarget-firstTouchesToday)}};
+    const focusItems: FocusItem[] = [];
+    for (const lead of actionableInbound) focusItems.push({id:`inbound:${lead.id}`,lead,priorityReason:"A prospect has replied and needs a human response.",recommendedAction:"Review the conversation, respond to the prospect, and record the outcome.",type:"UNREPLIED_INBOUND"});
+    for (const lead of due) focusItems.push({id:`followup:${lead.id}`,lead,priorityReason:`Follow-up due since ${new Date(dueAt(lead)!).toLocaleDateString("en-NG")}.`,recommendedAction:"Review the saved conversation and send a relevant follow-up.",dueAt:dueAt(lead),type:"OVERDUE_FOLLOW_UP"});
+
+    const slotsForNewOutreach = Math.max(0, dailyTarget - focusItems.length);
+    const newLeads = assignedLeads.filter(l=>l.status==="ACTIVE"&&l.pipelineStage==="UNCONTACTED"&&!blockedLeadIds.has(l.id)&&contactable(l))
+      .sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).slice(0,slotsForNewOutreach);
+    for (const lead of newLeads) focusItems.push({id:`first-touch:${lead.id}`,lead,priorityReason:"Qualified prospect with a saved phone/WhatsApp contact, awaiting first outreach.",recommendedAction:"Personalize the first-touch message, contact the company, and confirm the outreach was sent.",type:"UNCONTACTED_PROSPECT"});
+
+    // Enforce the 30-item cap after strict priority ordering: replies, follow-ups, new outreach.
+    const priorityRank:Record<FocusItem["type"],number> = {UNREPLIED_INBOUND:0,OVERDUE_FOLLOW_UP:1,UNCONTACTED_PROSPECT:2};
+    const prioritized = focusItems.sort((a,b)=>priorityRank[a.type]-priorityRank[b.type]||(a.dueAt||"").localeCompare(b.dueAt||""));
+    const todaysActions = prioritized.slice(0,dailyTarget);
+    return {focusItems:todaysActions,metrics:{target:dailyTarget,sentToday:sentToday.length,firstTouchesToday,followUpsSentToday,queuedFirstTouches:newLeads.length,dueFollowUps:due.length,unrepliedInbound:actionableInbound.length,remainingFirstTouches:Math.max(0,dailyTarget-firstTouchesToday)}};
   }
 
   static async list(user: User, query: { search?: string; stage?: string; page?: number; limit?: number }) {
