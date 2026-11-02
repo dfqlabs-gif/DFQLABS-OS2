@@ -13,7 +13,7 @@ import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js"
 import { PublicContactEnricher } from "./discovery/publicContactEnricher.js";
 
 const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
-const SUPPLEMENTAL_NIGERIAN_MARKETS = ["Lagos", "Port Harcourt", "Ibadan", "Enugu", "Owerri", "Warri", "Uyo", "Calabar"];
+const SUPPLEMENTAL_NIGERIAN_MARKETS = ["Lagos", "Port Harcourt", "Ibadan", "Enugu", "Owerri", "Warri", "Uyo", "Calabar", "Abeokuta", "Akure", "Ado-Ekiti", "Bauchi", "Birnin Kebbi", "Damaturu", "Dutse", "Gombe", "Gusau", "Ilorin", "Jalingo", "Katsina", "Lafia", "Lokoja", "Makurdi", "Minna", "Osogbo", "Sokoto", "Umuahia", "Yenagoa"];
 const DEFAULT_INDUSTRIES = ["real estate developer", "luxury realtor", "real estate agency", "property investment company"];
 
 interface LeadFinderSettings {
@@ -117,6 +117,31 @@ function isGenericCompanyName(value: string): boolean {
   if (/[!?]/.test(raw) || /\.\s+[A-Z]/.test(value)) return true;
   return /^(?:real estate|property|properties|realty|realtor|housing|estate|luxury real estate|real estate company|property company|real estate agency|property agency|real estate developer|property developer|real estate investment company|real estate companies|property companies|real estate agencies|property agencies|real estate developers|best real estate companies|top real estate companies|unknown real estate company)(?: in .*)?$/.test(name);
 }
+function isTargetCompanyName(value: string, evidence: string): boolean {
+  const name = normalize(value);
+  const combined = normalize(evidence);
+  // Exclude individual agents/brokers and personal-name-only identities.
+  if (/\b(?:independent realtor|freelance realtor|property agent|real estate agent|estate agent|broker|property consultant)\b/.test(name)) return false;
+  const corporateNameSignal = /\b(?:limited|ltd|plc|incorporated|inc\.?|company|co\.?|group|holdings|ventures|investments|developers?|development|properties|property|realty|estates?|homes?|shelters|housing|constructions?|capital|projects|consortium)\b/.test(name);
+  const corporateEvidence = /\b(?:limited|ltd|plc|registered company|incorporated|corporate office|head office|our company|about us|company profile|property development company|real estate development company)\b/.test(combined);
+  return corporateNameSignal || corporateEvidence;
+}
+
+function hasDiscoveredSocialProfile(candidate: RawCandidate): boolean {
+  const profiles = [candidate.instagram, candidate.facebook, candidate.linkedin]
+    .filter((value): value is string => Boolean(value?.trim()));
+  return profiles.some((value) => {
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (host === "instagram.com") return url.pathname.split("/").filter(Boolean).length >= 1;
+      if (host === "facebook.com") return url.pathname.split("/").filter(Boolean).length >= 1;
+      if (host === "linkedin.com") return /^\/(?:company|showcase)\//i.test(url.pathname);
+      return false;
+    } catch { return false; }
+  });
+}
+
 function qualityFor(score: number): Candidate["quality"] {
   if (score >= 90) return "EXCELLENT";
   if (score >= 80) return "HIGH";
@@ -491,17 +516,26 @@ export class LeadFinderService {
             continue;
           }
 
-          // A mobile number is valuable, but it is not the only legitimate public
-          // business contact route. Keep verifiable businesses with a website, email,
-          // or official social profile; specialists can obtain direct numbers during outreach.
-          const hasPublicContactRoute = Boolean(
-            validPhone || candidate.email?.trim() || candidate.website?.trim() ||
-            candidate.instagram?.trim() || candidate.facebook?.trim() || candidate.linkedin?.trim()
-          );
-          if (!hasPublicContactRoute) {
+          const evidenceText = [candidate.description, candidate.sourceTitle, candidate.sourceSnippet].filter(Boolean).join(" ");
+          if (!isTargetCompanyName(companyName, evidenceText)) {
+            rejectionReasons.genericCompanyName++;
+            rejected++;
+            recordReview(candidate, "REJECTED", "Not enough evidence of an established real-estate company; individual agents, brokers and personal profiles are excluded", validPhone);
+            continue;
+          }
+
+          // DFQLABS ICP requires BOTH a validated Nigerian business phone and a discoverable
+          // official company social profile. Website/email alone is not an outreach-ready fit.
+          if (!validPhone) {
             rejectionReasons.invalidNigeriaPhone++;
             rejected++;
-            recordReview(candidate, "REJECTED", "No usable public contact route (phone, email, website, or business social profile)");
+            recordReview(candidate, "REJECTED", "No valid Nigerian business phone number publicly verified", validPhone);
+            continue;
+          }
+          if (!hasDiscoveredSocialProfile(candidate)) {
+            rejectionReasons.belowMinimumScore++;
+            rejected++;
+            recordReview(candidate, "REJECTED", "No discoverable official Instagram, Facebook, or LinkedIn company profile", validPhone);
             continue;
           }
 
