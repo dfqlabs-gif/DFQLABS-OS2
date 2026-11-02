@@ -230,10 +230,16 @@ export class PersistentProspectService {
     for (const lead of newLeads) focusItems.push({id:`first-touch:${lead.id}`,lead,priorityReason:"Contactable prospect awaiting first outreach.",recommendedAction:"Generate the first-touch DM, personalize it, open WhatsApp, send it, and confirm it was sent.",type:"UNCONTACTED_PROSPECT"});
     // Explain an empty queue with real database counts instead of leaving specialists
     // guessing whether there are no leads or merely no usable phone contacts.
-    const {data:poolRows,error:poolError} = await db.from("leads").select("id")
-      .eq("status","ACTIVE").eq("pipeline_stage","UNCONTACTED").limit(5000);
-    if(poolError) throw new Error(poolError.message);
-    const poolIds = (poolRows || []).map((row:{id:string})=>row.id);
+    const poolIds:string[] = [];
+    for(let page=0;page<20;page++){
+      const {data:poolRows,error:poolError} = await db.from("leads").select("id")
+        .eq("status","ACTIVE").eq("pipeline_stage","UNCONTACTED")
+        .order("created_at",{ascending:true}).range(page*500,page*500+499);
+      if(poolError) throw new Error(poolError.message);
+      const batch=(poolRows || []).map((row:{id:string})=>row.id);
+      poolIds.push(...batch);
+      if(batch.length<500) break;
+    }
     const poolContactable = new Set<string>();
     for(let i=0;i<poolIds.length;i+=200){
       const {data,error} = await db.from("lead_contacts").select("lead_id,normalized_value")
