@@ -119,7 +119,11 @@ export class PersistentProspectService {
     }
   }
 
-  static async getTodayFocus(user: User, target = 30): Promise<{ focusItems: FocusItem[]; metrics: TodayFocusMetrics }> {
+  static async getTodayFocus(user: User, target = 30): Promise<{
+    focusItems: FocusItem[];
+    metrics: TodayFocusMetrics;
+    queueDiagnostics: { activeUncontacted: number; contactableUncontacted: number; missingPhoneOrWhatsapp: number; blockedByOpenContactIssue: number };
+  }> {
     const db = getSupabaseClient();
     if (!db) throw new Error("Persistent database is not configured");
     await this.ensureUser(user);
