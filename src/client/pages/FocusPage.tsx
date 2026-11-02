@@ -21,7 +21,9 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
   };
   useEffect(() => { load(); }, []);
 
-  const progress = Math.min(100, Math.round((metrics.firstTouchesToday / Math.max(1, metrics.target)) * 100));
+  const completedActions = metrics.sentToday;
+  const remainingActions = Math.max(0, metrics.target - completedActions);
+  const progress = Math.min(100, Math.round((completedActions / Math.max(1, metrics.target)) * 100));
   const ordered = [...items.filter((item) => item.type === "UNREPLIED_INBOUND"), ...items.filter((item) => item.type === "OVERDUE_FOLLOW_UP"), ...items.filter((item) => item.type === "UNCONTACTED_PROSPECT")];
 
   return <div className="focus-workspace">
@@ -30,22 +32,22 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
       <button className="btn-secondary" onClick={load} disabled={loading}>↻ Refresh focus</button>
     </section>
     <div className="grid-stats">
-      <StatCard label="New Outreach Progress" value={loading ? "…" : `${metrics.firstTouchesToday}/${metrics.target}`} description={`${metrics.remainingFirstTouches} first touches remaining today`} accentColor="#00d4ff" />
-      <StatCard label="Follow-ups Due" value={loading ? "…" : metrics.dueFollowUps} description={`${metrics.followUpsSentToday} follow-ups sent today`} accentColor="#f59e0b" />
+      <StatCard label="Today’s Action Progress" value={loading ? "…" : `${completedActions}/${metrics.target}`} description={`${remainingActions} priority actions remaining today`} accentColor="#00d4ff" />
+      <StatCard label="Follow-ups Due" value={loading ? "…" : metrics.dueFollowUps} description="Prioritized ahead of new cold outreach" accentColor="#f59e0b" />
       <StatCard label="Replies To Handle" value={loading ? "…" : metrics.unrepliedInbound} description="Respond before starting more cold outreach" accentColor="#10b981" />
-      <StatCard label="Ready To Contact" value={loading ? "…" : metrics.queuedFirstTouches} description="Contactable leads queued from your existing database" />
+      <StatCard label="New Prospects Queued" value={loading ? "…" : metrics.queuedFirstTouches} description="Fills remaining spaces after replies and follow-ups" />
     </div>
     <section className="card" style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 10 }}>
-        <div><h2 style={{ fontSize: 16, margin: 0 }}>Daily first-touch target</h2><p style={{ color: "var(--text-muted)", fontSize: 12, margin: "5px 0 0" }}>30 new first-touch messages per working day. Due follow-ups and inbound replies are additional responsibilities.</p></div>
+        <div><h2 style={{ fontSize: 16, margin: 0 }}>Daily priority-action target</h2><p style={{ color: "var(--text-muted)", fontSize: 12, margin: "5px 0 0" }}>Up to 30 actions per working day: replies first, due follow-ups second, then qualified new prospects.</p></div>
         <strong style={{ color: "var(--accent-glacier)", whiteSpace: "nowrap" }}>{progress}%</strong>
       </div>
       <div style={{ height: 8, borderRadius: 999, background: "var(--bg-primary)", overflow: "hidden", border: "1px solid var(--border-color)" }}><div style={{ width: `${progress}%`, height: "100%", background: "var(--accent-glacier)", transition: "width 180ms ease" }} /></div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}><span>{metrics.firstTouchesToday} first touches confirmed sent</span><span>{metrics.queuedFirstTouches} contactable leads ready</span></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}><span>{completedActions} actions confirmed sent</span><span>{items.length} priority actions in today’s queue</span></div>
     </section>
     <section className="card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
-        <div><h2 style={{ fontSize: 16, margin: 0 }}>Today’s action queue</h2><p style={{ color: "var(--text-muted)", fontSize: 12, margin: "5px 0 0" }}>Priority order: prospect replies, due follow-ups, then new outreach.</p></div>
+        <div><h2 style={{ fontSize: 16, margin: 0 }}>Today’s action queue</h2><p style={{ color: "var(--text-muted)", fontSize: 12, margin: "5px 0 0" }}>Up to 30 actions, ranked: replies to handle, follow-ups due, then new outreach.</p></div>
         <button className="btn-secondary" onClick={() => onNavigate("/prospects")}>Open My Leads</button>
       </div>
       {loading ? <div style={{ display: "flex", flexDirection: "column", gap: 12 }}><Skeleton height="80px" /><Skeleton height="80px" /></div> :
