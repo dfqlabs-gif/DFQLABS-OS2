@@ -369,10 +369,8 @@ export class LeadFinderService {
       for (const location of locationsForSource) {
         if (created.length >= remaining) break;
 
-        const { error: progressStartError } = await db.from("lead_finder_runs").update({
-          stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, reviewedCandidates, phase: "DISCOVERY", currentProvider: source.name, currentLocation: location, statusMessage: "Searching " + location + " with " + source.name + "..." }
-        }).eq("id", run.id).eq("status", "RUNNING");
-        if (progressStartError) throw new Error("Unable to persist Lead Finder progress: " + progressStartError.message);
+        // Do not write large review/provider payloads before every query.
+        // Discovery must continue even when a progress checkpoint is unavailable.
         let result: SourceQueryResult;
         try {
           result = await source.discoverCandidates(location, settings.industries.filter((value) => typeof value === "string" && value.trim()).join("; ") || "real estate", source.name === "APIFY_NPC" ? 10 : 40);
@@ -421,9 +419,15 @@ export class LeadFinderService {
         } : resolvedResult;
         const { error: progressEndError } = await db.from("lead_finder_runs").update({
           found_count: found, qualified_count: qualified, duplicate_count: duplicate, rejected_count: rejected,
-          stats: { target, created: created.length, found, qualified, duplicate, rejected, rejectionReasons, sourceStats, phase: "QUALIFICATION", currentProvider: source.name, currentLocation: location, statusMessage: "Reviewed " + found + " candidates; " + created.length + " qualified prospects saved so far." }
+          stats: {
+            target, created: created.length, found, qualified, duplicate, rejected,
+            phase: "QUALIFICATION", currentProvider: source.name, currentLocation: location,
+            statusMessage: "Reviewed " + found + " candidates; " + created.length + " qualified prospects saved so far."
+          }
         }).eq("id", run.id).eq("status", "RUNNING");
-        if (progressEndError) throw new Error("Unable to persist Lead Finder provider progress: " + progressEndError.message);
+        if (progressEndError) {
+          console.warn("[Lead Finder] Progress checkpoint failed; continuing discovery:", progressEndError.message);
+        }
 
         if (!result.succeeded) {
           console.warn(`[Lead Finder] Source ${source.name} failed:`, result.errorMessage);
@@ -487,10 +491,17 @@ export class LeadFinderService {
             continue;
           }
 
-          if (!validPhone) {
+          // A mobile number is valuable, but it is not the only legitimate public
+          // business contact route. Keep verifiable businesses with a website, email,
+          // or official social profile; specialists can obtain direct numbers during outreach.
+          const hasPublicContactRoute = Boolean(
+            validPhone || candidate.email?.trim() || candidate.website?.trim() ||
+            candidate.instagram?.trim() || candidate.facebook?.trim() || candidate.linkedin?.trim()
+          );
+          if (!hasPublicContactRoute) {
             rejectionReasons.invalidNigeriaPhone++;
             rejected++;
-            recordReview(candidate, "REJECTED", "Missing or invalid Nigerian mobile number");
+            recordReview(candidate, "REJECTED", "No usable public contact route (phone, email, website, or business social profile)");
             continue;
           }
 
