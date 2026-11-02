@@ -1,4 +1,11 @@
 import React, { useEffect, useState } from "react";
+
+const getTimeGreeting = (): string => {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  return "Good evening";
+};
 import { FocusItem, TodayFocusMetrics } from "../../shared/types/index.js";
 import { Skeleton } from "../components/Skeleton.js";
 import { StatCard } from "../components/StatCard.js";
@@ -13,6 +20,7 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
   const [items, setItems] = useState<FocusItem[]>([]);
   const [metrics, setMetrics] = useState<TodayFocusMetrics>(emptyMetrics);
   const [loading, setLoading] = useState(true);
+  const [greeting, setGreeting] = useState(getTimeGreeting);
   const [diagnostics, setDiagnostics] = useState<{activeUncontacted:number;contactableUncontacted:number;missingPhoneOrWhatsapp:number;blockedByOpenContactIssue:number} | null>(null);
   const { addToast } = useToast();
   const load = () => {
@@ -20,7 +28,11 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
     ApiClient.getTodayFocus().then((res) => { setItems(res.focusItems); setMetrics(res.metrics || emptyMetrics); setDiagnostics(res.queueDiagnostics || null); })
       .catch((err) => addToast(err.message, "error")).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const greetingTimer = window.setInterval(() => setGreeting(getTimeGreeting()), 60_000);
+    return () => window.clearInterval(greetingTimer);
+  }, []);
 
   const completedActions = metrics.sentToday;
   const remainingActions = Math.max(0, metrics.target - completedActions);
@@ -29,7 +41,7 @@ export const FocusPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
 
   return <div className="focus-workspace">
     <section className="page-intro">
-      <div><div className="eyebrow">OUTREACH SPECIALIST WORKSPACE</div><h1>Good morning. Here’s your work for today.</h1><p>Work from leads already in DFQLABS OS. The system queues contactable prospects for you; Lead Finder replenishes the pool rather than being a daily prerequisite.</p></div>
+      <div><div className="eyebrow">OUTREACH SPECIALIST WORKSPACE</div><h1>{greeting}. Here’s your work for today.</h1><p>Work from leads already in DFQLABS OS. The system queues contactable prospects for you; Lead Finder replenishes the pool rather than being a daily prerequisite.</p></div>
       <button className="btn-secondary" onClick={load} disabled={loading}>↻ Refresh focus</button>
     </section>
     <div className="grid-stats">
