@@ -4,17 +4,15 @@ import { normalizeSocialIdentifier } from "../utils/socialNormalizer.js";
 import { User } from "../../shared/types/index.js";
 import { SerperDiscoverySource } from "./discovery/serperSource.js";
 import { GooglePlacesDiscoverySource } from "./discovery/googlePlacesSource.js";
-import { OpenStreetMapDiscoverySource } from "./discovery/openStreetMapSource.js";
 import { DirectoryDiscoverySource } from "./discovery/directorySource.js";
-import { ApifyNpcDiscoverySource } from "./discovery/apifyNpcSource.js";
 import { DiscoverySource, RawCandidate, SourceQueryResult } from "./discovery/types.js";
 import { validateNigerianMobilePhone } from "../utils/phoneNormalizer.js";
 import { CompanyIdentityResolver } from "./discovery/companyIdentityResolver.js";
 import { PublicContactEnricher } from "./discovery/publicContactEnricher.js";
 
-const DEFAULT_LOCATIONS = ["Abuja", "Kano", "Kaduna", "Jos", "Asaba", "Benin City", "Akwa Ibom"];
+const DEFAULT_LOCATIONS = ["Lagos", "Abuja", "Port Harcourt", "Ibadan", "Kano", "Kaduna", "Enugu", "Benin City", "Uyo", "Jos", "Asaba", "Owerri", "Warri", "Calabar"];
 const SUPPLEMENTAL_NIGERIAN_MARKETS = ["Lagos", "Port Harcourt", "Ibadan", "Enugu", "Owerri", "Warri", "Uyo", "Calabar"];
-const DEFAULT_INDUSTRIES = ["real estate developer", "luxury realtor", "real estate agency", "property investment company"];
+const DEFAULT_INDUSTRIES = ["real estate development company", "registered property development company", "real estate investment and holdings company", "property development and construction company", "residential and commercial property company", "property management company", "real estate group limited"];
 
 interface LeadFinderSettings {
   dailyTarget: number;
@@ -117,6 +115,23 @@ function isGenericCompanyName(value: string): boolean {
   if (/[!?]/.test(raw) || /\.\s+[A-Z]/.test(value)) return true;
   return /^(?:real estate|property|properties|realty|realtor|housing|estate|luxury real estate|real estate company|property company|real estate agency|property agency|real estate developer|property developer|real estate investment company|real estate companies|property companies|real estate agencies|property agencies|real estate developers|best real estate companies|top real estate companies|unknown real estate company)(?: in .*)?$/.test(name);
 }
+function isCorporateRealEstateCompany(name: string, evidence: string): boolean {
+  const text = normalize(name + " " + evidence);
+  const legalEntity = /\\b(?:limited|ltd\\.?|plc|incorporated|inc\\.?|holdings|group|ventures)\\b/i.test(text);
+  const companyLanguage = /\\b(?:company|companies|developer|development company|property development|real estate group|property group|property investment|holdings|estates limited|properties limited)\\b/i.test(text);
+  const institutionalBusiness = /\\b(?:real estate development|property development|commercial property|residential development|property investment|real estate investment|property management)\\b/i.test(text);
+  const individualOperator = /\\b(?:independent realtor|freelance agent|property agent|estate agent|real estate agent|broker|brokerage agent|sales consultant|property consultant)\\b/i.test(name);
+  return !individualOperator && (legalEntity || companyLanguage || institutionalBusiness);
+}
+
+function hasActiveSocialPresence(candidate: RawCandidate): boolean {
+  const profiles = [candidate.instagram, candidate.facebook, candidate.linkedin].filter(Boolean);
+  if (!profiles.length) return false;
+  // Search snippets must contain a recent-activity signal; a bare profile URL is not proof of an active account.
+  const evidence = normalize([candidate.sourceSnippet, candidate.description].filter(Boolean).join(" "));
+  return /\\b(?:today|yesterday|\\d{1,2}\\s+days?\\s+ago|\\d{1,2}\\s+weeks?\\s+ago|\\d{1,2}\\s+months?\\s+ago|recent posts?|latest posts?|posted on|published on|new post|instagram posts?|facebook posts?|linkedin posts?)\\b/i.test(evidence);
+}
+
 function qualityFor(score: number): Candidate["quality"] {
   if (score >= 90) return "EXCELLENT";
   if (score >= 80) return "HIGH";
@@ -320,16 +335,11 @@ export class LeadFinderService {
     }
 
     const sources: DiscoverySource[] = [
-      // Public NPC advertiser data provides a dedicated Nigeria-specific real-estate discovery path.
-      // Optional: runs only when APIFY_API_TOKEN is configured; capped to protect free credits.
-      new ApifyNpcDiscoverySource(),
-      // Structured business/place search reduces reliance on web snippets and article titles.
+      // Company-oriented acquisition only: avoid NPC advertiser records and OSM estate-agent listings,
+      // which predominantly identify individual agents/brokers rather than target companies.
       new GooglePlacesDiscoverySource(),
       new SerperDiscoverySource(),
-      // Public directory search can yield contactable prospects without paid Serper credits.
-      // Run it before OSM, whose public records often lack phone numbers and can be slow.
-      new DirectoryDiscoverySource(),
-      new OpenStreetMapDiscoverySource()
+      new DirectoryDiscoverySource()
     ];
     const discoveryLocations = [...new Set([...settings.locations, ...SUPPLEMENTAL_NIGERIAN_MARKETS])];
 
@@ -491,17 +501,28 @@ export class LeadFinderService {
             continue;
           }
 
-          // A mobile number is valuable, but it is not the only legitimate public
-          // business contact route. Keep verifiable businesses with a website, email,
-          // or official social profile; specialists can obtain direct numbers during outreach.
-          const hasPublicContactRoute = Boolean(
-            validPhone || candidate.email?.trim() || candidate.website?.trim() ||
-            candidate.instagram?.trim() || candidate.facebook?.trim() || candidate.linkedin?.trim()
-          );
-          if (!hasPublicContactRoute) {
-            rejectionReasons.invalidNigeriaPhone++;
+          // DFQLABS target: operating real-estate companies, not individual agents or brokers.
+          const companyEvidence = [candidate.description, candidate.sourceTitle, candidate.sourceSnippet].filter(Boolean).join(" ");
+          if (!isCorporateRealEstateCompany(companyName, companyEvidence)) {
             rejected++;
-            recordReview(candidate, "REJECTED", "No usable public contact route (phone, email, website, or business social profile)");
+            rejectionReasons.genericCompanyName++;
+            recordReview(candidate, "REJECTED", "Not enough evidence of an established real-estate company; individual agents and brokers are outside the target profile", validPhone);
+            continue;
+          }
+
+          // A phone number is mandatory for the outreach team's calling/WhatsApp workflow.
+          if (!validPhone) {
+            rejected++;
+            rejectionReasons.invalidNigeriaPhone++;
+            recordReview(candidate, "REJECTED", "No valid Nigerian business mobile number was found", validPhone);
+            continue;
+          }
+
+          // A social URL alone is insufficient: the indexed evidence must also indicate recent activity.
+          if (!hasActiveSocialPresence(candidate)) {
+            rejected++;
+            rejectionReasons.belowMinimumScore++;
+            recordReview(candidate, "REJECTED", "No verifiable active Instagram, Facebook or LinkedIn presence with recent indexed activity", validPhone);
             continue;
           }
 
