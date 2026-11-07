@@ -147,21 +147,6 @@ function isTargetCompanyName(value: string, evidence: string): boolean {
   return corporateNameSignal || corporateEvidence;
 }
 
-function hasDiscoveredSocialProfile(candidate: RawCandidate): boolean {
-  const profiles = [candidate.instagram, candidate.facebook, candidate.linkedin]
-    .filter((value): value is string => Boolean(value?.trim()));
-  return profiles.some((value) => {
-    try {
-      const url = new URL(value);
-      const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (host === "instagram.com") return url.pathname.split("/").filter(Boolean).length >= 1;
-      if (host === "facebook.com") return url.pathname.split("/").filter(Boolean).length >= 1;
-      if (host === "linkedin.com") return /^\/(?:company|showcase)\//i.test(url.pathname);
-      return false;
-    } catch { return false; }
-  });
-}
-
 function qualityFor(score: number): Candidate["quality"] {
   if (score >= 90) return "EXCELLENT";
   if (score >= 80) return "HIGH";
