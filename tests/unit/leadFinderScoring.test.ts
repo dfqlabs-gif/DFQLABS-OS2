@@ -1,11 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
-import { isDirectoryCandidate, scoreCandidate } from "../../src/server/services/leadFinderService.js";
+import { hasVerifiedNigerianBusinessPhone, isDirectoryCandidate, scoreCandidate, shouldDisableDiscoverySource } from "../../src/server/services/leadFinderService.js";
 
 vi.mock("../../src/server/config/supabase.js", () => ({
   getSupabaseClient: () => null
 }));
 
 describe("Lead Finder qualification scoring", () => {
+  it("accepts a verified Nigerian business mobile as sufficient outreach contact without requiring a social URL", () => {
+    expect(hasVerifiedNigerianBusinessPhone({ phone: "08012345678" })).toBe(true);
+    expect(hasVerifiedNigerianBusinessPhone({ phone: "+234 801 234 5678" })).toBe(true);
+    expect(hasVerifiedNigerianBusinessPhone({ phone: "0123456789" })).toBe(false);
+    expect(hasVerifiedNigerianBusinessPhone({ phone: undefined })).toBe(false);
+  });
+
+  it("opens a provider circuit only for provider-wide failures, not an ordinary empty result", () => {
+    expect(shouldDisableDiscoverySource({ succeeded: false, errorCode: "DIRECTORY_FETCH_FAILED" })).toBe(true);
+    expect(shouldDisableDiscoverySource({ succeeded: false, errorCode: "OSM_UNREACHABLE" })).toBe(true);
+    expect(shouldDisableDiscoverySource({ succeeded: false, errorCode: "NOT_CONFIGURED" })).toBe(true);
+    expect(shouldDisableDiscoverySource({ succeeded: false, errorCode: "GOOGLE_PLACES_NO_RESULTS" })).toBe(false);
+    expect(shouldDisableDiscoverySource({ succeeded: true, errorCode: undefined })).toBe(false);
+  });
+
   it("recognizes market relevance from the discovery location when real-estate evidence is present", () => {
     const result = scoreCandidate({
       companyName: "Bright Homes Realty",

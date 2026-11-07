@@ -55,6 +55,26 @@ function domain(value?: string): string {
 
 export type LeadFinderDuplicateAssessment = "CONFIRMED_DUPLICATE" | "POTENTIAL_DUPLICATE" | "NO_MATCH";
 
+const PROVIDER_WIDE_FAILURE_CODES = new Set([
+  "NOT_CONFIGURED",
+  "SERPER_CREDITS_EXHAUSTED",
+  "DIRECTORY_FETCH_FAILED",
+  "OSM_UNREACHABLE"
+]);
+
+/** A publicly verified Nigerian mobile is sufficient for first-touch WhatsApp outreach.
+ * Social profiles and websites enrich a record but must not be hard qualification gates.
+ */
+export function hasVerifiedNigerianBusinessPhone(candidate: Pick<RawCandidate, "phone">): boolean {
+  return validateNigerianMobilePhone(candidate.phone).isValid;
+}
+
+/** Stop retrying a provider across dozens of locations after a provider-wide failure. */
+export function shouldDisableDiscoverySource(result: Pick<SourceQueryResult, "succeeded" | "errorCode">): boolean {
+  return !result.succeeded && Boolean(result.errorCode && PROVIDER_WIDE_FAILURE_CODES.has(result.errorCode));
+}
+
+
 export function assessLeadFinderDuplicate(input: {
   companyKey: string;
   identifiers: string[];
@@ -125,21 +145,6 @@ function isTargetCompanyName(value: string, evidence: string): boolean {
   const corporateNameSignal = /\b(?:limited|ltd|plc|incorporated|inc\.?|company|co\.?|group|holdings|ventures|investments|developers?|development|properties|property|realty|estates?|homes?|shelters|housing|constructions?|capital|projects|consortium)\b/.test(name);
   const corporateEvidence = /\b(?:limited|ltd|plc|registered company|incorporated|corporate office|head office|our company|about us|company profile|property development company|real estate development company)\b/.test(combined);
   return corporateNameSignal || corporateEvidence;
-}
-
-function hasDiscoveredSocialProfile(candidate: RawCandidate): boolean {
-  const profiles = [candidate.instagram, candidate.facebook, candidate.linkedin]
-    .filter((value): value is string => Boolean(value?.trim()));
-  return profiles.some((value) => {
-    try {
-      const url = new URL(value);
-      const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (host === "instagram.com") return url.pathname.split("/").filter(Boolean).length >= 1;
-      if (host === "facebook.com") return url.pathname.split("/").filter(Boolean).length >= 1;
-      if (host === "linkedin.com") return /^\/(?:company|showcase)\//i.test(url.pathname);
-      return false;
-    } catch { return false; }
-  });
 }
 
 function qualityFor(score: number): Candidate["quality"] {
@@ -368,6 +373,7 @@ export class LeadFinderService {
     };
 
     const sourceStats: Record<string, SourceQueryResult> = {};
+    const disabledProviders = new Set<string>();
     const persistenceErrors: string[] = [];
     // Bounded candidate-level audit trail lets the UI explain qualification counts.
     const reviewedCandidates: Array<Record<string, unknown>> = [];
@@ -389,10 +395,17 @@ export class LeadFinderService {
 
     for (const source of sources) {
       if (created.length >= remaining) break;
+      if (!source.isConfigured()) {
+        sourceStats[source.name] = {
+          sourceName: source.name, attempted: false, succeeded: false, queriesCount: 0, candidates: [],
+          errorCode: "NOT_CONFIGURED", errorMessage: `${source.name} is not configured; provider credentials or access are required.`
+        };
+        continue;
+      }
 
       const locationsForSource = source.name === "OPENSTREETMAP" || source.name === "APIFY_NPC" ? settings.locations : discoveryLocations;
       for (const location of locationsForSource) {
-        if (created.length >= remaining) break;
+        if (created.length >= remaining || disabledProviders.has(source.name)) break;
 
         // Do not write large review/provider payloads before every query.
         // Discovery must continue even when a progress checkpoint is unavailable.
@@ -456,6 +469,10 @@ export class LeadFinderService {
 
         if (!result.succeeded) {
           console.warn(`[Lead Finder] Source ${source.name} failed:`, result.errorMessage);
+          if (shouldDisableDiscoverySource(result)) {
+            disabledProviders.add(source.name);
+            console.warn(`[Lead Finder] Circuit opened for ${source.name}; skipping remaining locations after provider-wide failure ${result.errorCode}.`);
+          }
           continue;
         }
 
@@ -524,18 +541,13 @@ export class LeadFinderService {
             continue;
           }
 
-          // DFQLABS ICP requires BOTH a validated Nigerian business phone and a discoverable
-          // official company social profile. Website/email alone is not an outreach-ready fit.
-          if (!validPhone) {
+          // A verified Nigerian business mobile is the required first-touch channel.
+          // Website/social discovery is enrichment, not a mandatory gate: provider snippets
+          // frequently return the official phone and company identity separately from social URLs.
+          if (!hasVerifiedNigerianBusinessPhone(candidate)) {
             rejectionReasons.invalidNigeriaPhone++;
             rejected++;
             recordReview(candidate, "REJECTED", "No valid Nigerian business phone number publicly verified", validPhone);
-            continue;
-          }
-          if (!hasDiscoveredSocialProfile(candidate)) {
-            rejectionReasons.belowMinimumScore++;
-            rejected++;
-            recordReview(candidate, "REJECTED", "No discoverable official Instagram, Facebook, or LinkedIn company profile", validPhone);
             continue;
           }
 
